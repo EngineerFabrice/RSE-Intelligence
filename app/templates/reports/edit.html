@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Edit Report · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">Edit Report</div>
+<div class="page-subtitle mb-3">Update administrative details. Extracted financial values can only be changed through Review Center resolutions, which preserve the audit trail.</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="small text-muted mb-3">
+          Original file: <strong>{{ report.original_filename }}</strong><br>
+          Status: <span class="badge badge-status-{{ report.status_label()[1] }}">{{ report.status_label()[0] }}</span>
+        </div>
+
+        <form method="post" novalidate>
+          {{ form.hidden_tag() }}
+          <div class="mb-3">
+            <label class="form-label small">Report Name</label>
+            {{ form.display_name(class="form-control", placeholder=report.original_filename) }}
+            <div class="form-text">Leave blank to display the original filename.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Report Date</label>
+            {{ form.report_date(class="form-control") }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Notes</label>
+            {{ form.notes(class="form-control", rows="4", placeholder="Optional internal notes about this report…") }}
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+            <a href="{{ url_for('reports.list_reports') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

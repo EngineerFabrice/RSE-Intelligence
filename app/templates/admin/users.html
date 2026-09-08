@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Administration · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">User Administration</div>
+<div class="page-subtitle mb-2">Manage platform accounts and roles.</div>
+<ul class="nav nav-pills mb-3 small">
+  <li class="nav-item"><a class="nav-link active" href="{{ url_for('admin.users') }}">Users</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.audit_log') }}">Audit Log</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.data_quality') }}">Data Quality</a></li>
+</ul>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">Create User</div>
+      <div class="card-body">
+        <form method="post">
+          {{ form.hidden_tag() }}
+          <div class="mb-2">
+            <label class="form-label small">Name</label>
+            {{ form.name(class="form-control form-control-sm") }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Email</label>
+            {{ form.email(class="form-control form-control-sm") }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Password</label>
+            {{ form.password(class="form-control form-control-sm") }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Role</label>
+            <select name="role" class="form-select form-select-sm">
+              {% for r in roles %}<option value="{{ r }}">{{ r|title }}</option>{% endfor %}
+            </select>
+          </div>
+          {{ form.submit(class="btn btn-primary btn-sm w-100") }}
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">All Users</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+          {% for u in users %}
+            <tr>
+              <td>{{ u.name }}</td><td>{{ u.email }}</td><td class="text-capitalize">{{ u.role }}</td>
+              <td><span class="badge {{ 'bg-success' if u.status == 'active' else 'bg-secondary' }}">{{ u.status }}</span></td>
+              <td class="text-end">
+                {% if u.id != current_user.id %}
+                <form method="post" action="{{ url_for('admin.toggle_user_status', user_id=u.id) }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-secondary">{{ 'Disable' if u.status == 'active' else 'Enable' }}</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

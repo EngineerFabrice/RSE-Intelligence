@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Closing Bell · RSE Intelligence{% endblock %}
+{% block content %}
+<div class="page-title h4">Closing Bell / Order Book</div>
+<div class="page-subtitle mb-3">Bids and offers from the latest approved report.</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Security</th><th class="text-end">Bid Qty</th><th class="text-end">Bid Price</th><th class="text-end">Offer Qty</th><th class="text-end">Offer Price</th><th>Status</th></tr></thead>
+      <tbody id="cbBody"><tr><td colspan="6" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/closing_bell.js') }}"></script>
+{% endblock %}

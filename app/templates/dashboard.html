@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Home · RSE Intelligence{% endblock %}
+{% block content %}
+<section class="home-workflow">
+  <div class="home-intro">
+    <div class="eyebrow">RSE MARKET INTELLIGENCE</div>
+    <h1>Official market-report intelligence from Rwanda Stock Exchange data.</h1>
+    <p>Upload a market report to transform it into a validated, professional report.</p>
+  </div>
+  <div id="dropzone" class="upload-dropzone home-upload">
+    <div class="workflow-step">01 <span>Upload</span></div>
+    <h2>Upload RSE Market Report</h2>
+    <p class="text-muted">Select an official Rwanda Stock Exchange market report PDF to begin.</p>
+    <button type="button" class="btn btn-primary" id="browseBtn">Upload PDF</button>
+    <input type="file" id="fileInput" accept="application/pdf" class="d-none">
+    <div id="selectedFile" class="selected-file d-none"></div>
+    <div class="text-muted small mt-3">PDF files up to 25MB</div>
+  </div>
+  <div id="progressCard" class="workflow-panel d-none">
+    <div class="workflow-step">02 <span>Process</span></div>
+    <div class="processing-heading" id="progressHeading">Processing RSE Report</div>
+    <div class="progress-track my-3"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-reading"><span id="progressMessage">Processing your report…</span><strong id="progressPercent">0%</strong></div>
+    <div id="resultBox" class="d-none"></div>
+  </div>
+  <div id="errorBox" class="workflow-panel is-error d-none">
+    <div class="processing-heading mb-2">We couldn't process this report</div>
+    <p class="text-muted mb-3" id="errorMessage">Please try again or choose a different report.</p>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="retryBtn">Try Again</button>
+  </div>
+  {% if latest_report and latest_report.processing_status in ('approved', 'review_required', 'validation_required') %}
+  <div class="workflow-panel ready-panel" id="latestReady">
+    <div class="workflow-step">03 <span>Ready</span></div>
+    <div class="ready-title"><span class="check">✓</span> Report Ready</div>
+    <div class="report-filename">{{ latest_report.name }}</div>
+    <p class="text-muted">Your market report is ready to review.</p>
+    <div class="ready-actions">
+      <a class="btn btn-primary" href="{{ url_for('reports.preview_page', report_id=latest_report.id) }}">Preview Report</a>
+      <a class="btn btn-outline-primary" href="/api/reports/{{ latest_report.id }}/export/excel">Download Excel</a>
+      <a class="btn btn-outline-primary" href="/api/reports/{{ latest_report.id }}/export/pdf">Download PDF</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/upload.js') }}"></script>{% endblock %}

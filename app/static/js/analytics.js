@@ -1,0 +1,97 @@
+(function () {
+  let history = [];
+  let metricsChart = null;
+  let compareChart = null;
+  const COLORS = ["#1f4e78", "#b9770e", "#1e7d4f", "#a63232", "#5a3d8f"];
+
+  const METRIC_LABELS = {
+    equity_turnover: "Equity Turnover (Frw)",
+    bond_turnover: "Bond Turnover (Frw)",
+    shares_traded: "Shares Traded",
+    market_capitalization: "Market Capitalization (Frw)",
+  };
+
+  function renderMetricChart(metric) {
+    const ctx = document.getElementById("metricsChart").getContext("2d");
+    if (metricsChart) metricsChart.destroy();
+    metricsChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: history.map(h => h.report_date),
+        datasets: [{
+          label: METRIC_LABELS[metric],
+          data: history.map(h => h[metric]),
+          borderColor: COLORS[0],
+          backgroundColor: "rgba(31,78,120,0.08)",
+          tension: 0.25, fill: true, pointRadius: 2,
+        }],
+      },
+      options: { responsive: true, plugins: { legend: { display: false } } },
+    });
+  }
+
+  document.querySelectorAll("#metricSelector button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#metricSelector button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderMetricChart(btn.dataset.metric);
+    });
+  });
+
+  async function loadHistory() {
+    try {
+      const resp = await RSE.get("/api/market/history");
+      history = resp.data;
+      renderMetricChart("equity_turnover");
+    } catch (e) {
+      document.getElementById("metricsChart").replaceWith(
+        Object.assign(document.createElement("div"), { className: "text-muted text-center py-4", textContent: "No historical data available yet." })
+      );
+    }
+  }
+
+  async function loadInsights() {
+    const box = document.getElementById("insightsBox");
+    try {
+      const resp = await RSE.get("/api/insights");
+      const items = resp.data;
+      box.innerHTML = items.length ? items.map(i => `
+        <div class="mb-3 pb-3 border-bottom">
+          <div class="fw-bold small text-uppercase text-muted">${i.title}</div>
+          <div class="small">${i.explanation}</div>
+        </div>`).join("") : `<div class="text-muted text-center py-3">No insights available for the latest report.</div>`;
+    } catch (e) {
+      box.innerHTML = `<div class="text-danger small">${e.message}</div>`;
+    }
+  }
+
+  document.getElementById("compareBtn").addEventListener("click", async () => {
+    const raw = document.getElementById("compareInput").value;
+    const symbols = raw.split(",").map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 5);
+    if (!symbols.length) return;
+
+    const datasets = [];
+    let labels = [];
+    for (let i = 0; i < symbols.length; i++) {
+      try {
+        const resp = await RSE.get(`/api/equities/${symbols[i]}/history`);
+        const h = resp.data.history;
+        if (h.length > labels.length) labels = h.map(x => x.report_date);
+        datasets.push({
+          label: symbols[i],
+          data: h.map(x => x.closing_price),
+          borderColor: COLORS[i % COLORS.length],
+          backgroundColor: "transparent",
+          tension: 0.25, pointRadius: 2,
+        });
+      } catch (e) { /* skip unknown symbol */ }
+    }
+
+    const ctx = document.getElementById("compareChart").getContext("2d");
+    if (compareChart) compareChart.destroy();
+    compareChart = new Chart(ctx, { type: "line", data: { labels, datasets }, options: { responsive: true } });
+  });
+
+  loadHistory();
+  loadInsights();
+})();

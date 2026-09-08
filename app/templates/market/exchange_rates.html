@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Exchange Rates · RSE Intelligence{% endblock %}
+{% block content %}
+<div class="page-title h4">Exchange Rates</div>
+<div class="page-subtitle mb-3">Buying, selling and average rates from the latest approved report.</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Currency</th><th class="text-end">Buying Rate</th><th class="text-end">Selling Rate</th><th class="text-end">Average Rate</th></tr></thead>
+      <tbody id="fxBody"><tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/exchange_rates.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Reports · RSE Intelligence{% endblock %}
+{% block content %}
+<div class="page-title h4">Reports</div>
+<div class="page-subtitle mb-3">Approved RSE market intelligence ready to read and download.</div>
+{% if reports %}
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0">
+  <thead><tr><th>Report</th><th>Date</th><th>Verification</th><th class="text-end">Open</th></tr></thead>
+  <tbody>{% for report in reports %}<tr>
+    <td><a href="{{ url_for('reports.preview_page', report_id=report.id) }}">{{ report.name }}</a></td>
+    <td>{{ report.report_date or "Unknown" }}</td>
+    <td><span class="badge badge-status-approved">✓ Verified</span></td>
+    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.preview_page', report_id=report.id) }}">View report</a></td>
+  </tr>{% endfor %}</tbody>
+</table></div></div>
+{% else %}<div class="card"><div class="card-body py-5 text-center text-muted">No approved reports are available yet.</div></div>{% endif %}
+{% endblock %}

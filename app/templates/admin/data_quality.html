@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Data Quality · RSE Intelligence{% endblock %}
+{% block content %}
+<div class="page-title h4">Data Quality</div>
+<div class="page-subtitle mb-2">Validation health across all imported reports.</div>
+<ul class="nav nav-pills mb-3 small">
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.users') }}">Users</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.audit_log') }}">Audit Log</a></li>
+  <li class="nav-item"><a class="nav-link active" href="{{ url_for('admin.data_quality') }}">Data Quality</a></li>
+</ul>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Reports Processed</div><div class="metric-value">{{ total }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value">{{ approved }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Needs Review</div><div class="metric-value">{{ needs_review }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Failed</div><div class="metric-value">{{ failed }}</div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-header">Recent Reports</div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Report</th><th>Status</th><th>Open Issues</th></tr></thead>
+      <tbody>
+      {% for r in reports %}
+        <tr>
+          <td>{{ r.original_filename }}</td>
+          <td><span class="badge badge-status-{{ r.processing_status }}">{{ r.processing_status.replace('_',' ') }}</span></td>
+          <td>{{ r.open_issue_count() }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

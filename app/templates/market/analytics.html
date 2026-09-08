@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Market Analytics · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">Historical Market Analytics</div>
+<div class="page-subtitle mb-3">Turnover trends, security comparisons, and market insights across approved reports.</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">Market Metrics Over Time</div>
+      <div class="card-body">
+        <div class="btn-group btn-group-sm mb-3" id="metricSelector">
+          <button class="btn btn-outline-secondary active" data-metric="equity_turnover">Equity Turnover</button>
+          <button class="btn btn-outline-secondary" data-metric="bond_turnover">Bond Turnover</button>
+          <button class="btn btn-outline-secondary" data-metric="shares_traded">Shares Traded</button>
+          <button class="btn btn-outline-secondary" data-metric="market_capitalization">Market Cap</button>
+        </div>
+        <canvas id="metricsChart" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">Market Insights</div>
+      <div class="card-body" id="insightsBox"><div class="text-muted text-center py-4">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Compare Securities</div>
+  <div class="card-body">
+    <div class="d-flex gap-2 mb-3">
+      <input type="text" id="compareInput" class="form-control form-control-sm" style="max-width: 260px;" placeholder="Enter symbols, e.g. BOK,BLR,KCB">
+      <button class="btn btn-primary btn-sm" id="compareBtn">Compare</button>
+    </div>
+    <canvas id="compareChart" height="90"></canvas>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+{% endblock %}

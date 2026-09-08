@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Import RSE Report · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">Import RSE Market Report</div>
+<div class="page-subtitle mb-3">Upload an official Rwanda Stock Exchange market report (PDF) for automatic extraction and validation.</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <div id="dropzone" class="upload-dropzone mb-3">
+      <div class="h5 mb-2">Drag &amp; Drop PDF Here</div>
+      <div class="text-muted mb-3">or</div>
+      <button type="button" class="btn btn-primary btn-sm" id="browseBtn">Choose PDF</button>
+      <input type="file" id="fileInput" accept="application/pdf" class="d-none">
+      <div class="text-muted small mt-3">Supported: Official RSE Market Reports (PDF, up to 25MB)</div>
+    </div>
+
+    <div id="progressCard" class="card d-none">
+      <div class="card-body text-center py-4">
+        <div class="processing-heading mb-3" id="progressHeading">Processing RSE Report</div>
+
+        <div class="progress-track mb-2">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="d-flex justify-content-between small text-muted mb-3">
+          <span id="progressMessage">Uploading your report…</span>
+          <span id="progressPercent">0%</span>
+        </div>
+
+        <div id="resultBox" class="d-none"></div>
+      </div>
+    </div>
+
+    <div id="errorBox" class="card d-none">
+      <div class="card-body text-center py-4">
+        <div class="processing-heading mb-2">We couldn't process this report</div>
+        <p class="text-muted mb-3" id="errorMessage">
+          No market data was published from this file. Please try again or choose a different report.
+        </p>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="retryBtn">Try Again</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}

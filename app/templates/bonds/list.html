@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Bonds · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">Bonds</div>
+<div class="page-subtitle mb-3">Government and corporate bonds, recent trades, and upcoming maturities.</div>
+
+<ul class="nav nav-tabs mb-3" id="bondTabs">
+  <li class="nav-item"><button class="nav-link active" data-target="all">All Bonds</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="government">Government</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="corporate">Corporate</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="trades">Bond Trades</button></li>
+</ul>
+
+<div class="card">
+  <div class="table-responsive" id="bondsContent">
+    <div class="text-center text-muted py-5">Loading…</div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bonds_list.js') }}"></script>
+{% endblock %}

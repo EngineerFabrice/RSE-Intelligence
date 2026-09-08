@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Indices · RSE Intelligence{% endblock %}
+{% block content %}
+<div class="page-title h4">Market Indices</div>
+<div class="page-subtitle mb-3">RSI, ALSI and other RSE indices from the latest approved report.</div>
+<div class="row g-3" id="indicesCards"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/indices.js') }}"></script>
+{% endblock %}

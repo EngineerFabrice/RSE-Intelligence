@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Report Preview · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div id="app" data-report-id="{{ report.id }}" class="report-preview">
+
+<div class="report-hero">
+  <div>
+    <div class="eyebrow">RSE MARKET REPORT</div>
+    <h1 class="report-title">{{ report.name }}</h1>
+    <div class="page-subtitle" id="reportMeta">Loading…</div>
+  </div>
+  <div class="report-actions">
+    {% if current_user.can_approve() %}
+    <button class="btn btn-success btn-sm" id="approveBtn">Approve Report</button>
+    {% endif %}
+    <a href="{{ url_for('reports.review_page', report_id=report.id) }}" class="btn btn-outline-secondary btn-sm">Review Exceptions</a>
+    <a class="btn btn-primary btn-sm" href="/api/reports/{{ report.id }}/export/excel">Download Excel</a>
+    <div class="btn-group">
+      <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown">More downloads</button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="/api/reports/{{ report.id }}/export/excel">Excel Workbook</a></li>
+        <li><a class="dropdown-item" href="/api/reports/{{ report.id }}/export/pdf">PDF Report</a></li>
+        <li><a class="dropdown-item" href="/api/reports/{{ report.id }}/export/csv?dataset=equities">CSV — Equities</a></li>
+        <li><a class="dropdown-item" href="/api/reports/{{ report.id }}/export/csv?dataset=bonds">CSV — Bonds</a></li>
+      </ul>
+    </div>
+    {% if current_user.is_admin() %}
+    <a href="{{ url_for('reports.edit_page', report_id=report.id) }}" class="btn btn-outline-secondary btn-sm">Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="report-meta card mb-4">
+  <div class="card-body py-2">
+    <div class="row small g-2">
+      <div class="col-6 col-md-3"><span class="text-muted">Report Date</span><br>{{ report.report_date or "Unknown" }}</div>
+      <div class="col-6 col-md-3"><span class="text-muted">Uploaded</span><br>{{ report.upload_time.strftime('%d %b %Y %H:%M') if report.upload_time else "—" }} by {{ report.uploaded_by.name if report.uploaded_by else "—" }}</div>
+      <div class="col-6 col-md-3"><span class="text-muted">Status</span><br><span class="badge badge-status-{{ report.status_label()[1] }}">{{ "✓ " if report.status_label()[1] == "approved" }}{{ report.status_label()[0] }}</span></div>
+      <div class="col-6 col-md-3"><span class="text-muted">File</span><br>{{ report.original_filename }} ({{ (report.file_size_bytes / 1024)|round(0)|int if report.file_size_bytes else "—" }} KB)</div>
+    </div>
+    {% if report.notes %}<div class="small text-muted mt-2 pt-2 border-top"><strong>Notes:</strong> {{ report.notes }}</div>{% endif %}
+  </div>
+</div>
+
+<div class="section-heading">
+  <div>
+    <div class="eyebrow">STRUCTURED MARKET DATA</div>
+    <h2>Report sections</h2>
+  </div>
+  <span class="text-muted small">Canonical data used for report exports</span>
+</div>
+<ul class="nav nav-tabs report-tabs mb-3" id="previewTabs">
+  <li class="nav-item"><button class="nav-link active" data-target="stock">Equities</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="indices">Indices</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="market_stats">Market Stats</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="bonds">Bonds</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="bond_trades">Bond Trades</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="exchange_rates">Exchange Rates</button></li>
+  <li class="nav-item"><button class="nav-link" data-target="closing_bell">Closing Bell</button></li>
+</ul>
+
+<div class="card report-table-card">
+  <div class="table-responsive" id="tabContent">
+    <div class="text-center text-muted py-5">Loading extracted data…</div>
+  </div>
+</div>
+
+</div>
+
+<div class="modal fade" id="sourceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title h6 mb-0">Source of Extracted Data</div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="sourceModalBody">Loading…</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/preview.js') }}"></script>
+{% endblock %}

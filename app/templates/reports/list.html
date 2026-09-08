@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Report Management · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <div class="page-title h4">Report Management</div>
+    <div class="page-subtitle">All imported RSE market reports and their verification status.</div>
+  </div>
+  {% if current_user.can_edit() %}
+  <a href="{{ url_for('reports.upload_page') }}" class="btn btn-primary btn-sm">+ Upload RSE Report</a>
+  {% endif %}
+</div>
+
+<div id="deleteSuccess" class="alert alert-success d-none" role="status" aria-live="polite">
+  Report deleted successfully.
+</div>
+
+<form method="get" class="row g-2 mb-3 align-items-center">
+  <div class="col-auto" style="min-width: 240px;">
+    <input type="search" name="q" value="{{ search }}" class="form-control form-control-sm"
+           placeholder="Search by name, date, or ID…">
+  </div>
+  <div class="col-auto">
+    <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      {% for key, label in status_filters.items() %}
+      <option value="{{ key }}" {{ "selected" if status == key }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="From date">
+  </div>
+  <div class="col-auto">
+    <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="To date">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+    {% if search or status or date_from or date_to %}
+    <a href="{{ url_for('reports.list_reports') }}" class="btn btn-sm btn-link">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if not reports %}
+<div class="card">
+  <div class="card-body text-center py-5">
+    {% if search or status or date_from or date_to %}
+    <p class="text-muted mb-0">No reports match your search or filters.</p>
+    {% else %}
+    <p class="text-muted mb-3">No RSE reports yet.<br>Upload an official RSE market report to begin extracting market intelligence.</p>
+    {% if current_user.can_edit() %}
+    <a href="{{ url_for('reports.upload_page') }}" class="btn btn-primary btn-sm">+ Upload RSE Report</a>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Report</th><th>Report Date</th><th>Status</th><th>Records</th>
+          <th>Uploaded By</th><th>Last Updated</th><th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        {% set label, key = r.status_label() %}
+        <tr data-report-row="{{ r.id }}">
+          <td>
+            <a href="{{ url_for('reports.preview_page', report_id=r.id) }}" class="text-decoration-none">{{ r.name }}</a>
+            {% if r.display_name %}<div class="source-ref">{{ r.original_filename }}</div>{% endif %}
+          </td>
+          <td>{{ r.report_date or "Unknown" }}</td>
+          <td>
+            <span class="badge badge-status-{{ key }}">
+              {{ "✓ " if key == "approved" }}{{ label }}
+            </span>
+          </td>
+          <td>{{ r.total_extracted_records() }}</td>
+          <td class="small text-muted">
+            {{ r.uploaded_by.name if r.uploaded_by else "—" }}
+            <div class="source-ref">{{ r.upload_time.strftime('%d %b %Y') if r.upload_time else "" }}</div>
+          </td>
+          <td class="small text-muted">{{ r.updated_at.strftime('%d %b %Y %H:%M') if r.updated_at else "—" }}</td>
+          <td class="text-end">
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Actions
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('reports.preview_page', report_id=r.id) }}">View Report</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('reports.review_page', report_id=r.id) }}">Review Issues{% if r.open_issue_count() %} ({{ r.open_issue_count() }}){% endif %}</a></li>
+                {% if current_user.can_approve() and r.approval_status != 'approved' %}
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); RSE.post('/api/reports/{{ r.id }}/approve').then(()=>location.reload()).catch(e=>alert(e.message))">Approve</a></li>
+                {% endif %}
+                {% if current_user.is_admin() %}
+                <li><a class="dropdown-item" href="{{ url_for('reports.edit_page', report_id=r.id) }}">Edit</a></li>
+                {% endif %}
+                {% if current_user.can_edit() %}
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); RSE.post('/api/reports/{{ r.id }}/process').then(()=>location.reload()).catch(e=>alert(e.message))">Reprocess</a></li>
+                {% endif %}
+                {% if current_user.is_admin() %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item text-danger" href="#"
+                     onclick="event.preventDefault(); confirmDelete({{ r.id }}, {{ r.name|tojson }})">
+                    Delete
+                  </a>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body py-4">
+        <div class="h5 mb-2">Delete Report?</div>
+        <p class="text-muted mb-0">
+          This will permanently remove <strong id="deleteReportName"></strong> and its associated
+          extracted market data. This action cannot be undone.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteBtn">Delete Report</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let pendingDeleteId = null;
+  const deleteModalEl = document.getElementById('deleteModal');
+  const deleteModal = new bootstrap.Modal(deleteModalEl);
+
+  function confirmDelete(reportId, reportName) {
+    pendingDeleteId = reportId;
+    document.getElementById('deleteReportName').textContent = reportName;
+    deleteModal.show();
+  }
+
+  document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+    if (!pendingDeleteId) return;
+    const btn = document.getElementById('confirmDeleteBtn');
+    btn.disabled = true;
+    try {
+      await RSE.request(`/api/reports/${pendingDeleteId}`, { method: 'DELETE' });
+      const row = document.querySelector(`[data-report-row="${pendingDeleteId}"]`);
+      if (row) row.remove();
+      deleteModal.hide();
+      document.getElementById('deleteSuccess').classList.remove('d-none');
+      pendingDeleteId = null;
+    } catch (e) {
+      deleteModal.hide();
+      alert(e.message || 'The report could not be deleted. No data was removed.');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+{% endblock %}
