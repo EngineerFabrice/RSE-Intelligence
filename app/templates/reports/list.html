@@ -57,7 +57,7 @@
   </div>
 </div>
 {% else %}
-<div class="card">
+<div class="card" id="reportsTableCard">
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
@@ -106,8 +106,8 @@
                 {% if current_user.is_admin() %}
                 <li><hr class="dropdown-divider"></li>
                 <li>
-                  <a class="dropdown-item text-danger" href="#"
-                     onclick="event.preventDefault(); confirmDelete({{ r.id }}, {{ r.name|tojson }})">
+                  <a class="dropdown-item text-danger delete-report-link" href="#"
+                     data-report-id="{{ r.id }}" data-report-name="{{ r.name }}">
                     Delete
                   </a>
                 </li>
@@ -122,6 +122,24 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Not rendered on the page; cloned in by JS if a client-side delete empties the
+     visible list, so the "no reports" empty state (with the same search/filter
+     wording the server would render) can appear without a page reload. -->
+<template id="emptyStateTemplate">
+  <div class="card">
+    <div class="card-body text-center py-5">
+      {% if search or status or date_from or date_to %}
+      <p class="text-muted mb-0">No reports match your search or filters.</p>
+      {% else %}
+      <p class="text-muted mb-3">No RSE reports yet.<br>Upload an official RSE market report to begin extracting market intelligence.</p>
+      {% if current_user.can_edit() %}
+      <a href="{{ url_for('reports.upload_page') }}" class="btn btn-primary btn-sm">+ Upload RSE Report</a>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</template>
 
 <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -145,33 +163,85 @@
 
 {% block scripts %}
 <script>
-  let pendingDeleteId = null;
-  const deleteModalEl = document.getElementById('deleteModal');
-  const deleteModal = new bootstrap.Modal(deleteModalEl);
+  (function () {
+    const deleteModalEl = document.getElementById('deleteModal');
+    const deleteModal = new bootstrap.Modal(deleteModalEl);
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
 
-  function confirmDelete(reportId, reportName) {
-    pendingDeleteId = reportId;
-    document.getElementById('deleteReportName').textContent = reportName;
-    deleteModal.show();
-  }
+    let pendingDeleteId = null;
 
-  document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
-    if (!pendingDeleteId) return;
-    const btn = document.getElementById('confirmDeleteBtn');
-    btn.disabled = true;
-    try {
-      await RSE.request(`/api/reports/${pendingDeleteId}`, { method: 'DELETE' });
-      const row = document.querySelector(`[data-report-row="${pendingDeleteId}"]`);
-      if (row) row.remove();
-      deleteModal.hide();
-      document.getElementById('deleteSuccess').classList.remove('d-none');
+    // Delegated listener for every row's "Delete" dropdown item, read from
+    // data-* attributes rather than passed as literal JS arguments in an
+    // inline onclick. The report name used to be embedded via Jinja's
+    // "tojson" filter straight into an onclick="..." (HTML double-quoted)
+    // attribute, which breaks as soon as the name itself contains a double
+    // quote (JSON strings are double-quoted): the browser reads the
+    // attribute as ending at that first embedded quote, truncating the
+    // handler into invalid JS that silently never runs. data-* attributes go
+    // through normal HTML-attribute escaping instead, so they can't corrupt
+    // the surrounding markup.
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('.delete-report-link');
+      if (!link) return;
+      event.preventDefault();
+
+      pendingDeleteId = link.dataset.reportId;
+      document.getElementById('deleteReportName').textContent = link.dataset.reportName;
+
+      // Showing the modal is deferred to the next tick on purpose: this click
+      // handler runs while the Bootstrap Dropdown menu is still open, and the
+      // same click is about to trigger the Dropdown's own close/focus-return
+      // teardown. Calling Modal.show() synchronously in that same event races
+      // that teardown — the Dropdown's focus handling and the Modal's own
+      // focus trap can fight over aria-hidden/focus, and the modal can fail
+      // to become visible (a known Bootstrap 5 dropdown-to-modal interaction
+      // issue). Letting the Dropdown finish closing first, then opening the
+      // Modal, avoids that race.
+      setTimeout(() => deleteModal.show(), 0);
+    });
+
+    // Reset on every dismissal path (Cancel, backdrop click, Escape) so a stale
+    // id can never linger into an unrelated later confirm.
+    deleteModalEl.addEventListener('hidden.bs.modal', () => {
       pendingDeleteId = null;
-    } catch (e) {
-      deleteModal.hide();
-      alert(e.message || 'The report could not be deleted. No data was removed.');
-    } finally {
-      btn.disabled = false;
-    }
-  });
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      // Guards against a duplicate/double deletion request: pendingDeleteId is
+      // only set while the modal is open for a specific report, and the button
+      // is disabled for the rest of this handler's lifetime, so a second click
+      // (or a second confirm on a re-opened modal) can't fire a second DELETE.
+      if (!pendingDeleteId || confirmBtn.disabled) return;
+      confirmBtn.disabled = true;
+      const reportId = pendingDeleteId;
+
+      try {
+        await RSE.request(`/api/reports/${reportId}`, { method: 'DELETE' });
+        deleteModal.hide();
+
+        const row = document.querySelector(`[data-report-row="${reportId}"]`);
+        if (row) row.remove();
+
+        // If that was the last visible row, swap in the same empty state the
+        // server would render for the current search/filter — otherwise the
+        // page would be left showing a table with just a header and no rows.
+        if (!document.querySelector('[data-report-row]')) {
+          const tableCard = document.getElementById('reportsTableCard');
+          const emptyTemplate = document.getElementById('emptyStateTemplate');
+          if (tableCard && emptyTemplate) {
+            tableCard.replaceWith(emptyTemplate.content.cloneNode(true));
+          }
+        }
+
+        document.getElementById('deleteSuccess').classList.remove('d-none');
+      } catch (e) {
+        deleteModal.hide();
+        alert(e.message || 'The report could not be deleted. No data was removed.');
+      } finally {
+        confirmBtn.disabled = false;
+        pendingDeleteId = null;
+      }
+    });
+  })();
 </script>
 {% endblock %}
