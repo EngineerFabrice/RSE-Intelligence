@@ -3,34 +3,45 @@
 {% block content %}
 <section class="home-workflow">
   <div class="home-intro">
-    <div class="eyebrow">RSE MARKET INTELLIGENCE</div>
+    <span class="eyebrow">Rwanda Stock Exchange · Market Intelligence</span>
     <h1>Official market-report intelligence from Rwanda Stock Exchange data.</h1>
-    <p>Upload a market report to transform it into a validated, professional report.</p>
+    <p>Upload a market report to transform it into a validated, analyst-ready dataset — extracted, cross-checked, and exportable in minutes.</p>
   </div>
+
   <div id="dropzone" class="upload-dropzone home-upload">
-    <div class="workflow-step">01 <span>Upload</span></div>
+    <div class="workflow-step" data-index="01"><span>Upload</span></div>
+    <div class="upload-icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 15V4"></path>
+        <path d="M7.5 8.5 12 4l4.5 4.5"></path>
+        <path d="M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"></path>
+      </svg>
+    </div>
     <h2>Upload RSE Market Report</h2>
     <p class="text-muted">Select an official Rwanda Stock Exchange market report PDF to begin.</p>
-    <button type="button" class="btn btn-primary" id="browseBtn">Upload PDF</button>
+    <button type="button" class="btn btn-primary" id="browseBtn">Choose PDF File</button>
     <input type="file" id="fileInput" accept="application/pdf" class="d-none">
-    <div id="selectedFile" class="selected-file d-none"></div>
-    <div class="text-muted small mt-3">PDF files up to 25MB</div>
+    <div class="upload-hint">PDF format · up to 25MB · drag &amp; drop supported</div>
   </div>
+
   <div id="progressCard" class="workflow-panel d-none">
-    <div class="workflow-step">02 <span>Process</span></div>
+    <div class="workflow-step" id="progressStep" data-index="02"><span>Process</span></div>
+    <div id="selectedFile" class="selected-file d-none"></div>
     <div class="processing-heading" id="progressHeading">Processing RSE Report</div>
     <div class="progress-track my-3"><div class="progress-fill" id="progressFill"></div></div>
     <div class="progress-reading"><span id="progressMessage">Processing your report…</span><strong id="progressPercent">0%</strong></div>
     <div id="resultBox" class="d-none"></div>
   </div>
+
   <div id="errorBox" class="workflow-panel is-error d-none">
-    <div class="processing-heading mb-2">We couldn't process this report</div>
+    <div class="processing-heading mb-2"><span class="error-icon">!</span>We couldn't process this report</div>
     <p class="text-muted mb-3" id="errorMessage">Please try again or choose a different report.</p>
     <button type="button" class="btn btn-outline-secondary btn-sm" id="retryBtn">Try Again</button>
   </div>
+
   {% if latest_report and latest_report.processing_status in ('approved', 'review_required', 'validation_required') %}
   <div class="workflow-panel ready-panel" id="latestReady">
-    <div class="workflow-step">03 <span>Ready</span></div>
+    <div class="workflow-step" data-index="03"><span>Ready</span></div>
     <div class="ready-title"><span class="check">✓</span> Report Ready</div>
     <div class="report-filename">{{ latest_report.name }}</div>
     <p class="text-muted">Your market report is ready to review.</p>

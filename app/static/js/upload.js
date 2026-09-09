@@ -3,6 +3,7 @@
   const browseBtn = document.getElementById("browseBtn");
   const fileInput = document.getElementById("fileInput");
   const progressCard = document.getElementById("progressCard");
+  const progressStep = document.getElementById("progressStep");
   const progressHeading = document.getElementById("progressHeading");
   const progressFill = document.getElementById("progressFill");
   const progressMessage = document.getElementById("progressMessage");
@@ -48,6 +49,11 @@
     if (progress.state === "done") {
       progressHeading.innerHTML = '<span class="check">✓</span> Report Ready';
       progressFill.classList.add("is-done");
+      progressCard.classList.add("is-ready");
+      if (progressStep) {
+        progressStep.dataset.index = "03";
+        progressStep.innerHTML = "<span>Ready</span>";
+      }
       resultBox.classList.remove("d-none");
       resultBox.innerHTML = `
         <p class="text-muted mb-3">Your market report is ready to review.</p>
@@ -96,6 +102,11 @@
     errorBox.classList.add("d-none");
     dropzone.classList.add("d-none");
     progressCard.classList.remove("d-none");
+    progressCard.classList.remove("is-ready");
+    if (progressStep) {
+      progressStep.dataset.index = "02";
+      progressStep.innerHTML = "<span>Process</span>";
+    }
     if (selectedFile) {
       selectedFile.textContent = file.name;
       selectedFile.classList.remove("d-none");
