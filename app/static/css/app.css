@@ -239,6 +239,71 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 
 .narrative-box { background: #fff; border: 1px solid var(--rse-border); border-left: 4px solid var(--rse-navy); border-radius: 4px; padding: 1rem 1.25rem; font-size: 0.92rem; }
 
+/* Home dashboard: secondary, at-a-glance context below the upload workflow. */
+.home-dashboard { max-width: 960px; margin: 2.5rem auto 0; padding-bottom: 3rem; }
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  background: var(--rse-surface);
+  border: 1px solid var(--rse-border);
+  border-radius: var(--rse-radius);
+  box-shadow: var(--rse-shadow-sm);
+  padding: 1.1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.status-item { display: flex; align-items: center; gap: 0.65rem; }
+.status-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.status-dot.is-good { background: var(--rse-high); }
+.status-dot.is-info { background: var(--rse-navy); }
+.status-dot.is-review { background: var(--rse-review); }
+.status-dot.is-bad { background: var(--rse-manual); }
+.status-item-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rse-text-tertiary); }
+.status-item-value { font-size: 0.9rem; font-weight: 600; color: var(--rse-ink); }
+
+.dashboard-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.dashboard-card {
+  background: var(--rse-surface);
+  border: 1px solid var(--rse-border);
+  border-radius: var(--rse-radius);
+  box-shadow: var(--rse-shadow-sm);
+  padding: 1.5rem;
+}
+.dashboard-card-heading {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--rse-muted); margin-bottom: 1rem;
+}
+
+.latest-report-name { font-size: 1.05rem; font-weight: 700; color: var(--rse-ink); overflow-wrap: anywhere; }
+.latest-report-meta { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; }
+.section-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.section-tag {
+  font-size: 0.78rem; color: var(--rse-muted); background: var(--rse-surface-soft);
+  border: 1px solid var(--rse-border-soft); border-radius: 999px; padding: 0.25rem 0.7rem;
+}
+.section-tag strong { color: var(--rse-ink); font-weight: 700; }
+
+.pulse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+.pulse-tile { border: 1px solid var(--rse-border-soft); border-radius: var(--rse-radius-sm); padding: 0.75rem 0.9rem; }
+.pulse-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--rse-text-tertiary); margin-bottom: 0.3rem; }
+.pulse-value { font-size: 1.15rem; font-weight: 700; color: var(--rse-ink); }
+
+.recent-reports-list { display: flex; flex-direction: column; }
+.recent-report-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.85rem 0; border-bottom: 1px solid var(--rse-border-soft);
+}
+.recent-report-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.recent-report-name a { color: var(--rse-ink); font-weight: 600; text-decoration: none; }
+.recent-report-name a:hover { color: var(--rse-navy); }
+
+@media (max-width: 767.98px) {
+  .dashboard-row { grid-template-columns: 1fr; }
+  .status-strip { gap: 1rem 1.75rem; }
+  .recent-report-row { flex-wrap: wrap; }
+}
+
 .page-title { font-weight: 700; color: var(--rse-ink); margin-bottom: 0.15rem; }
 .page-subtitle { color: var(--rse-muted); font-size: 0.85rem; }
 

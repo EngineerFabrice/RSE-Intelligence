@@ -53,6 +53,126 @@
   </div>
   {% endif %}
 </section>
+
+<section class="home-dashboard">
+  <div class="status-strip">
+    <div class="status-item">
+      <span class="status-dot is-good"></span>
+      <div>
+        <div class="status-item-label">System Status</div>
+        <div class="status-item-value">Operational</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <span class="status-dot {{ 'is-good' if platform_status.in_progress == 0 else 'is-info' }}"></span>
+      <div>
+        <div class="status-item-label">Processing</div>
+        <div class="status-item-value">
+          {{ platform_status.in_progress }} in progress
+        </div>
+      </div>
+    </div>
+    <div class="status-item">
+      <span class="status-dot {{ 'is-good' if platform_status.needs_review == 0 else 'is-review' }}"></span>
+      <div>
+        <div class="status-item-label">Validation</div>
+        <div class="status-item-value">
+          {{ platform_status.needs_review }} need{{ '' if platform_status.needs_review == 1 else 's' }} review
+        </div>
+      </div>
+    </div>
+    {% if platform_status.failed %}
+    <div class="status-item">
+      <span class="status-dot is-bad"></span>
+      <div>
+        <div class="status-item-label">Failed</div>
+        <div class="status-item-value">{{ platform_status.failed }} report{{ '' if platform_status.failed == 1 else 's' }}</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="dashboard-row">
+    <div class="dashboard-card">
+      <div class="dashboard-card-heading">Latest Market Report</div>
+      {% if latest_verified %}
+      <div class="latest-report-name">{{ latest_verified.name }}</div>
+      <div class="latest-report-meta">
+        <span class="badge badge-status-approved">✓ Verified</span>
+        <span class="text-muted small">{{ latest_verified.report_date or "Date unknown" }}</span>
+      </div>
+      {% if validated_sections %}
+      <div class="section-tags">
+        {% for label, count in validated_sections %}
+        <span class="section-tag">{{ label }} <strong>{{ count }}</strong></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <a class="btn btn-outline-primary btn-sm mt-3" href="{{ url_for('reports.preview_page', report_id=latest_verified.id) }}">View Report</a>
+      {% else %}
+      <p class="text-muted mb-0">No verified report yet. Once a report is reviewed and approved, it will appear here.</p>
+      {% endif %}
+    </div>
+
+    <div class="dashboard-card">
+      <div class="dashboard-card-heading">Market Pulse</div>
+      {% if latest_verified and (latest_verified.indices.count() or latest_verified.market_statistics) %}
+      <div class="pulse-grid">
+        {% for idx in latest_verified.indices %}
+        <div class="pulse-tile">
+          <div class="pulse-label">{{ idx.index_name }}</div>
+          <div class="pulse-value">{{ "%.2f"|format(idx.current_value) if idx.current_value is not none else "—" }}</div>
+          {% if idx.percentage_change is not none %}
+          <div class="{{ 'change-positive' if idx.percentage_change > 0 else 'change-negative' if idx.percentage_change < 0 else 'change-flat' }}">
+            {{ "%+.2f"|format(idx.percentage_change) }}%
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% if latest_verified.market_statistics %}
+          {% set stats = latest_verified.market_statistics %}
+          {% if stats.market_capitalization is not none %}
+          <div class="pulse-tile">
+            <div class="pulse-label">Market Cap (Frw)</div>
+            <div class="pulse-value">{{ "{:,.0f}".format(stats.market_capitalization) }}</div>
+          </div>
+          {% endif %}
+          {% if stats.shares_traded is not none %}
+          <div class="pulse-tile">
+            <div class="pulse-label">Shares Traded</div>
+            <div class="pulse-value">{{ "{:,}".format(stats.shares_traded) }}</div>
+          </div>
+          {% endif %}
+        {% endif %}
+      </div>
+      <div class="text-muted small mt-2">As of {{ latest_verified.report_date or "the latest verified report" }}</div>
+      {% else %}
+      <p class="text-muted mb-0">No market indicators available yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="dashboard-card">
+    <div class="dashboard-card-heading">Recent Reports</div>
+    {% if recent_reports %}
+    <div class="recent-reports-list">
+      {% for r in recent_reports %}
+      {% set label, key = r.status_label() %}
+      <div class="recent-report-row">
+        <div class="recent-report-name">
+          <a href="{{ url_for('reports.preview_page', report_id=r.id) }}">{{ r.name }}</a>
+          <div class="source-ref">{{ r.report_date or "Date unknown" }}</div>
+        </div>
+        <span class="badge badge-status-{{ key }}">{{ "✓ " if key == "approved" }}{{ label }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('reports.preview_page', report_id=r.id) }}">View Report</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No reports uploaded yet.</p>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}<script src="{{ url_for('static', filename='js/upload.js') }}"></script>{% endblock %}
