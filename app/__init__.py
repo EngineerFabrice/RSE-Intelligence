@@ -40,6 +40,7 @@ def _register_blueprints(app):
     from app.api import register_api_blueprints
     from app.auth.routes import auth_bp
     from app.views.admin import admin_bp
+    from app.views.assistant import assistant_bp
     from app.views.bonds import bonds_bp
     from app.views.dashboard import dashboard_bp
     from app.views.equities import equities_bp
@@ -53,6 +54,7 @@ def _register_blueprints(app):
     app.register_blueprint(bonds_bp, url_prefix="/bonds")
     app.register_blueprint(market_bp, url_prefix="/market")
     app.register_blueprint(admin_bp, url_prefix="/admin")
+    app.register_blueprint(assistant_bp, url_prefix="/assistant")
 
     register_api_blueprints(app)
 

@@ -1,4 +1,5 @@
 def register_api_blueprints(app):
+    from app.api.assistant import assistant_api_bp
     from app.api.bonds import bonds_api_bp
     from app.api.equities import equities_api_bp
     from app.api.exchange_rates import exchange_rates_api_bp
@@ -16,3 +17,4 @@ def register_api_blueprints(app):
     app.register_blueprint(market_api_bp, url_prefix="/api/market")
     app.register_blueprint(order_book_api_bp, url_prefix="/api/order-book")
     app.register_blueprint(insights_api_bp, url_prefix="/api/insights")
+    app.register_blueprint(assistant_api_bp, url_prefix="/api/assistant")

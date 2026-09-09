@@ -25,6 +25,9 @@
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'dashboard.index' }}" href="{{ url_for('dashboard.index') }}">Home</a></li>
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint in ('reports.browse_reports', 'reports.preview_page') }}" href="{{ url_for('reports.browse_reports') }}">Reports</a></li>
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint in ('reports.list_reports', 'reports.edit_page') }}" href="{{ url_for('reports.list_reports') }}">Database</a></li>
+        {% if current_user.has_role('administrator', 'analyst') %}
+        <li class="nav-item"><a class="nav-link {{ 'active' if request.blueprint == 'assistant' }}" href="{{ url_for('assistant.index') }}">Ask RSE Market</a></li>
+        {% endif %}
         {% if current_user.is_admin() %}
         <li class="nav-item"><a class="nav-link {{ 'active' if request.blueprint == 'admin' }}" href="{{ url_for('admin.users') }}">Administration</a></li>
         {% endif %}

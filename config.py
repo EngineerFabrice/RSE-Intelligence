@@ -20,6 +20,12 @@ class Config:
 
     TESSERACT_CMD = os.environ.get("TESSERACT_CMD", "") or None
 
+    # "Ask RSE Market" assistant (spec: Phase 4). Left unset in a fresh checkout --
+    # the assistant reports itself as "not configured" rather than failing, see
+    # app/services/ai_assistant.py.
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "") or None
+    OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
     WTF_CSRF_ENABLED = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

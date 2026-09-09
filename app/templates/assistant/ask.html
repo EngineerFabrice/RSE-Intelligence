@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Ask RSE Market · RSE Intelligence{% endblock %}
+{% block content %}
+
+<div class="page-title h4">Ask RSE Market</div>
+<div class="page-subtitle mb-3">Ask questions about verified RSE market data.</div>
+
+<div class="assistant-shell">
+  <div class="card assistant-input-card">
+    <div class="card-body">
+      <form id="assistantForm" class="d-flex gap-2 flex-wrap">
+        <input type="text" id="assistantInput" class="form-control" maxlength="500"
+               placeholder="Type your market question…" autocomplete="off" required>
+        <button type="submit" class="btn btn-primary" id="assistantAskBtn">Ask</button>
+      </form>
+      <div class="assistant-examples mt-3">
+        <span class="text-muted small me-1">Try:</span>
+        <button type="button" class="assistant-example-chip">What was the latest market activity?</button>
+        <button type="button" class="assistant-example-chip">Which equity had the highest trading volume?</button>
+        <button type="button" class="assistant-example-chip">What was BLR's closing price?</button>
+        <button type="button" class="assistant-example-chip">Compare BLR and BOK.</button>
+        <button type="button" class="assistant-example-chip">How did the market index change?</button>
+        <button type="button" class="assistant-example-chip">Show the latest bond activity.</button>
+        <button type="button" class="assistant-example-chip">What was the USD/RWF exchange rate?</button>
+        <button type="button" class="assistant-example-chip">Is the latest market report fully verified?</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="assistantEmpty" class="text-muted small mt-3">
+    Answers are generated only from verified RSE market data already processed by this
+    platform — never invented or estimated.
+  </div>
+  <div id="assistantConversation" class="assistant-conversation mt-3"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/assistant.js') }}"></script>{% endblock %}
