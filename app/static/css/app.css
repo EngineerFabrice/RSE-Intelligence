@@ -369,7 +369,26 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
   padding: 1.1rem 1.3rem;
 }
 .assistant-answer-card.is-error { border-left-color: var(--rse-manual); }
-.assistant-answer-text { white-space: pre-wrap; color: var(--rse-ink); font-size: 0.95rem; line-height: 1.55; }
+.assistant-answer-text { color: var(--rse-ink); font-size: 0.95rem; line-height: 1.6; }
+.assistant-answer-text > *:first-child { margin-top: 0; }
+.assistant-answer-text > *:last-child { margin-bottom: 0; }
+.assistant-answer-text p { margin: 0 0 0.85rem; }
+.assistant-answer-text strong { color: var(--rse-ink); font-weight: 700; }
+.assistant-answer-heading {
+  margin: 1.1rem 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rse-navy);
+}
+.assistant-answer-divider { border: none; border-top: 1px solid var(--rse-border-soft); margin: 0.9rem 0; }
+.assistant-answer-text ul, .assistant-answer-text ol { margin: 0 0 0.85rem; padding-left: 1.25rem; }
+.assistant-answer-text li { margin-bottom: 0.3rem; }
+.assistant-answer-text .table-responsive { margin: 0 0 0.85rem; }
+.assistant-answer-table { margin-bottom: 0; font-size: 0.88rem; }
+.assistant-answer-table th { white-space: nowrap; }
+.assistant-answer-table td:last-child, .assistant-answer-table th:last-child { text-align: right; }
 
 .assistant-sources { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
 .assistant-source {

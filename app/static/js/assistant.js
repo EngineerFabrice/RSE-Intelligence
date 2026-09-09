@@ -18,6 +18,109 @@
     return div.innerHTML;
   }
 
+  // Minimal Markdown -> HTML for assistant answers (headings, bold, tables,
+  // bullet/numbered lists, horizontal rules). The raw text is HTML-escaped
+  // first, so only the Markdown syntax we recognize below is ever turned
+  // into markup -- everything else stays inert text.
+  function inlineFormat(text) {
+    return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  }
+
+  function isTableSeparatorRow(line) {
+    return /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(line);
+  }
+
+  function splitTableRow(line) {
+    let cells = line.trim();
+    if (cells.startsWith("|")) cells = cells.slice(1);
+    if (cells.endsWith("|")) cells = cells.slice(0, -1);
+    return cells.split("|").map((c) => c.trim());
+  }
+
+  function renderMarkdown(raw) {
+    const lines = escapeHtml(raw).split("\n");
+    const blocks = [];
+    let paragraphBuf = [];
+    let listBuf = [];
+    let listTag = null;
+
+    function flushParagraph() {
+      if (paragraphBuf.length) {
+        blocks.push(`<p>${paragraphBuf.map(inlineFormat).join("<br>")}</p>`);
+        paragraphBuf = [];
+      }
+    }
+    function flushList() {
+      if (listBuf.length) {
+        blocks.push(`<${listTag}>${listBuf.map((item) => `<li>${inlineFormat(item)}</li>`).join("")}</${listTag}>`);
+        listBuf = [];
+        listTag = null;
+      }
+    }
+
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = lines[i].trim();
+
+      if (trimmed === "") {
+        flushParagraph();
+        flushList();
+        i++;
+        continue;
+      }
+
+      if (/^#{1,6}\s+/.test(trimmed)) {
+        flushParagraph();
+        flushList();
+        blocks.push(`<h5 class="assistant-answer-heading">${inlineFormat(trimmed.replace(/^#{1,6}\s+/, ""))}</h5>`);
+        i++;
+        continue;
+      }
+
+      if (/^-{3,}$/.test(trimmed)) {
+        flushParagraph();
+        flushList();
+        blocks.push('<hr class="assistant-answer-divider">');
+        i++;
+        continue;
+      }
+
+      if (trimmed.startsWith("|") && i + 1 < lines.length && isTableSeparatorRow(lines[i + 1].trim())) {
+        flushParagraph();
+        flushList();
+        const headerCells = splitTableRow(trimmed);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim().startsWith("|")) {
+          rows.push(splitTableRow(lines[i].trim()));
+          i++;
+        }
+        const thead = `<thead><tr>${headerCells.map((c) => `<th>${inlineFormat(c)}</th>`).join("")}</tr></thead>`;
+        const tbody = `<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inlineFormat(c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+        blocks.push(`<div class="table-responsive"><table class="table table-sm assistant-answer-table">${thead}${tbody}</table></div>`);
+        continue;
+      }
+
+      const bulletMatch = trimmed.match(/^[*-]\s+(.*)$/);
+      const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+      if (bulletMatch || orderedMatch) {
+        const tag = bulletMatch ? "ul" : "ol";
+        if (listTag && listTag !== tag) flushList();
+        listTag = tag;
+        listBuf.push((bulletMatch || orderedMatch)[1]);
+        i++;
+        continue;
+      }
+
+      flushList();
+      paragraphBuf.push(trimmed);
+      i++;
+    }
+    flushParagraph();
+    flushList();
+    return blocks.join("");
+  }
+
   function renderSource(source) {
     const verified = !!source.verified;
     const statusClass = verified ? "assistant-status-verified" : "assistant-status-review";
@@ -44,7 +147,7 @@
     entry.innerHTML = `
       <div class="assistant-question">${escapeHtml(question)}</div>
       <div class="assistant-answer-card ${result.error ? "is-error" : ""}">
-        <div class="assistant-answer-text">${escapeHtml(result.answer)}</div>
+        <div class="assistant-answer-text">${renderMarkdown(result.answer)}</div>
         ${sourcesHtml ? `<div class="assistant-sources">${sourcesHtml}</div>` : ""}
       </div>`;
     conversation.insertBefore(entry, conversation.firstChild);
