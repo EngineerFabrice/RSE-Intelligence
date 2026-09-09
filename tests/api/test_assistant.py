@@ -4,14 +4,15 @@ Covers the RBAC matrix (Administrator/Analyst only), the query-tool layer
 (app/services/rse_query_tools.py) directly -- real data, no fabricated
 values, correct historical dates, correct calculations, source/verification
 metadata -- and the API endpoint's handling of the AI layer, always with the
-OpenAI client replaced by a scripted fake so tests never make a real network
-call regardless of what OPENAI_API_KEY happens to be set to in the
+Gemini client replaced by a scripted fake so tests never make a real network
+call regardless of what GEMINI_API_KEY happens to be set to in the
 environment.
 """
 
-import json
 from datetime import date
-from types import SimpleNamespace
+
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 
 from tests.fixtures.sample_report import build_sample_pdf
 
@@ -45,34 +46,31 @@ def _seed_approved_report(app, tmp_path, name="sample.pdf", report_date=None):
 
 
 # ---------------------------------------------------------------------------
-# Fake OpenAI client -- scripted responses, no network access whatsoever.
+# Fake Gemini client -- scripted responses, no network access whatsoever.
 
-class _FakeFunction:
-    def __init__(self, name, arguments):
-        self.name = name
-        self.arguments = arguments
-
-
-class _FakeToolCall:
-    def __init__(self, call_id, name, arguments):
-        self.id = call_id
-        self.function = _FakeFunction(name, json.dumps(arguments))
-
-
-def _fake_response(content=None, tool_calls=None):
-    message = SimpleNamespace(content=content, tool_calls=tool_calls)
-    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+def _fake_response(text=None, function_calls=None):
+    """Builds a real google.genai GenerateContentResponse (so response.text /
+    response.function_calls behave exactly as they would for a real call),
+    from a plain text answer and/or a list of (name, args) function calls."""
+    parts = []
+    if function_calls:
+        parts.extend(genai_types.Part.from_function_call(name=name, args=args) for name, args in function_calls)
+    if text is not None:
+        parts.append(genai_types.Part.from_text(text=text))
+    return genai_types.GenerateContentResponse(
+        candidates=[genai_types.Candidate(content=genai_types.Content(role="model", parts=parts))]
+    )
 
 
-class _FakeCompletions:
+class _FakeModels:
     def __init__(self, script):
         self._script = list(script)
-        self.received_messages = []
+        self.received_contents = []
 
-    def create(self, **kwargs):
-        self.received_messages.append(kwargs.get("messages"))
+    def generate_content(self, *, model, contents, config):
+        self.received_contents.append(contents)
         if not self._script:
-            raise AssertionError("Fake OpenAI script ran out of scripted responses.")
+            raise AssertionError("Fake Gemini script ran out of scripted responses.")
         step = self._script.pop(0)
         if isinstance(step, Exception):
             raise step
@@ -81,19 +79,19 @@ class _FakeCompletions:
 
 class _FakeClient:
     def __init__(self, script):
-        self.chat = SimpleNamespace(completions=_FakeCompletions(script))
+        self.models = _FakeModels(script)
 
 
-def _fake_openai_factory(script):
-    """A drop-in replacement for openai.OpenAI(api_key=...) that replays `script`."""
+def _fake_genai_client_factory(script):
+    """A drop-in replacement for genai.Client(api_key=...) that replays `script`."""
     def _factory(api_key=None, **kwargs):
         return _FakeClient(script)
     return _factory
 
 
-def _install_fake_openai(app, monkeypatch, script, api_key="test-key"):
-    app.config["OPENAI_API_KEY"] = api_key
-    monkeypatch.setattr("app.services.ai_assistant.OpenAI", _fake_openai_factory(script))
+def _install_fake_gemini(app, monkeypatch, script, api_key="test-key"):
+    app.config["GEMINI_API_KEY"] = api_key
+    monkeypatch.setattr("app.services.ai_assistant.genai.Client", _fake_genai_client_factory(script))
 
 
 # ---------------------------------------------------------------------------
@@ -133,21 +131,29 @@ def test_unauthenticated_cannot_access_assistant_page(client):
     assert api_resp.status_code == 401
 
 
-def test_nav_link_shown_for_admin(admin_client):
-    assert "Ask RSE Market" in admin_client.get("/").get_data(as_text=True)
+def test_floating_launcher_is_the_only_entry_point_for_admin(admin_client):
+    html = admin_client.get("/").get_data(as_text=True)
+    assert "Ask RSE Market" in html
+    assert 'class="assistant-launcher"' in html
+    # Exactly one entry point -- no separate top nav tab/link duplicating it.
+    assert html.count('href="/assistant/"') == 1
 
 
-def test_nav_link_hidden_for_viewer(viewer_client):
-    assert "Ask RSE Market" not in viewer_client.get("/").get_data(as_text=True)
+def test_floating_launcher_hidden_for_viewer(viewer_client):
+    html = viewer_client.get("/").get_data(as_text=True)
+    assert "Ask RSE Market" not in html
+    assert "assistant-launcher" not in html
 
 
-def test_nav_link_hidden_for_reviewer(reviewer_client):
-    assert "Ask RSE Market" not in reviewer_client.get("/").get_data(as_text=True)
+def test_floating_launcher_hidden_for_reviewer(reviewer_client):
+    html = reviewer_client.get("/").get_data(as_text=True)
+    assert "Ask RSE Market" not in html
+    assert "assistant-launcher" not in html
 
 
 # ---------------------------------------------------------------------------
 # 6-10: the query-tool layer itself -- real data, no hallucination, correct
-# dates, correct calculations, source/verification metadata. No OpenAI
+# dates, correct calculations, source/verification metadata. No Gemini
 # involved at all; these test the deterministic backend directly.
 
 def test_get_equity_returns_real_verified_data(app, tmp_path):
@@ -256,19 +262,19 @@ def test_no_verified_data_available_is_stated_clearly(app):
 
 
 # ---------------------------------------------------------------------------
-# 11: OpenAI/API failures are handled safely; the assistant is never
+# 11: Gemini/API failures are handled safely; the assistant is never
 # "unconfigured" silently, and never leaks internal error detail.
 
 def test_assistant_not_configured_returns_clear_message(app):
-    app.config["OPENAI_API_KEY"] = None
+    app.config["GEMINI_API_KEY"] = None
     result = answer_question("What was the latest market activity?")
     assert result["configured"] is False
     assert "configured" in result["answer"].lower()
     assert result["sources"] == []
 
 
-def test_assistant_handles_openai_failure_gracefully(app, monkeypatch):
-    _install_fake_openai(app, monkeypatch, script=[RuntimeError("simulated network failure")])
+def test_assistant_handles_gemini_failure_gracefully(app, monkeypatch):
+    _install_fake_gemini(app, monkeypatch, script=[RuntimeError("simulated network failure")])
 
     result = answer_question("What was the latest market activity?")
     assert result["configured"] is True
@@ -279,8 +285,8 @@ def test_assistant_handles_openai_failure_gracefully(app, monkeypatch):
     assert "simulated network failure" not in result["answer"]
 
 
-def test_ask_endpoint_handles_openai_failure_without_500(admin_client, app, monkeypatch):
-    _install_fake_openai(app, monkeypatch, script=[RuntimeError("boom")])
+def test_ask_endpoint_handles_gemini_failure_without_500(admin_client, app, monkeypatch):
+    _install_fake_gemini(app, monkeypatch, script=[RuntimeError("boom")])
 
     resp = admin_client.post("/api/assistant/ask", json={"question": "What was the latest market activity?"})
     assert resp.status_code == 200
@@ -294,6 +300,30 @@ def test_ask_endpoint_rejects_empty_and_oversized_questions(admin_client):
     assert admin_client.post("/api/assistant/ask", json={"question": "x" * 501}).status_code == 400
 
 
+def test_gemini_quota_exhaustion_is_handled_like_any_other_api_failure(app, monkeypatch):
+    # Regression test for the production incident where the configured provider key had
+    # no quota left (originally OpenAI's insufficient_quota/credit_balance_exhausted;
+    # now modeled on Gemini's equivalent 429 RESOURCE_EXHAUSTED). answer_question()
+    # catches genai_errors.APIError (and any other exception) without discriminating
+    # further -- this exercises exactly the handling path a real quota error takes,
+    # and confirms the failure is caught at the Gemini call itself, before any
+    # tool/database access, and never surfaces quota/internal detail to the user.
+    quota_error = genai_errors.ClientError(
+        429,
+        {"error": {"message": "You exceeded your current quota, please check your plan and billing details.",
+                    "status": "RESOURCE_EXHAUSTED"}},
+    )
+    _install_fake_gemini(app, monkeypatch, script=[quota_error])
+
+    result = answer_question("Which equity had the highest trading volume?")
+    assert result["configured"] is True
+    assert result["error"] is True
+    assert result["used_tools"] == []  # never reached tool-calling or the database
+    assert "RESOURCE_EXHAUSTED" not in result["answer"]
+    assert "quota" not in result["answer"].lower()
+    assert "429" not in result["answer"]
+
+
 # ---------------------------------------------------------------------------
 # Full round-trip through the API with a scripted tool call -- confirms the
 # endpoint actually executes the real backend tool against real seeded data
@@ -302,13 +332,12 @@ def test_ask_endpoint_rejects_empty_and_oversized_questions(admin_client):
 def test_ask_endpoint_executes_real_tool_and_returns_sources(admin_client, app, tmp_path, monkeypatch):
     report = _seed_approved_report(app, tmp_path)
 
-    tool_call = _FakeToolCall("call_1", "get_equity", {"symbol": "BLR"})
     script = [
-        _fake_response(content=None, tool_calls=[tool_call]),
-        _fake_response(content="BLR closed at 515.00, up from a previous close of 500.00, "
-                                "as of the 2026-09-07 verified report."),
+        _fake_response(function_calls=[("get_equity", {"symbol": "BLR"})]),
+        _fake_response(text="BLR closed at 515.00, up from a previous close of 500.00, "
+                             "as of the 2026-09-07 verified report."),
     ]
-    _install_fake_openai(app, monkeypatch, script)
+    _install_fake_gemini(app, monkeypatch, script)
 
     resp = admin_client.post("/api/assistant/ask", json={"question": "What was BLR's closing price?"})
     assert resp.status_code == 200
@@ -332,8 +361,8 @@ def test_ask_endpoint_executes_real_tool_and_returns_sources(admin_client, app, 
 
 def test_analyst_can_successfully_ask_a_question(analyst_client, app, tmp_path, monkeypatch):
     _seed_approved_report(app, tmp_path)
-    script = [_fake_response(content="No tool needed for this greeting.", tool_calls=None)]
-    _install_fake_openai(app, monkeypatch, script)
+    script = [_fake_response(text="No tool needed for this greeting.")]
+    _install_fake_gemini(app, monkeypatch, script)
 
     resp = analyst_client.post("/api/assistant/ask", json={"question": "hello"})
     assert resp.status_code == 200

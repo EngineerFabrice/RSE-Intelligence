@@ -20,7 +20,9 @@ import json
 import logging
 
 from flask import current_app
-from openai import OpenAI
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 
 from app.services import rse_query_tools as tools
 
@@ -70,167 +72,148 @@ TOOL_SECTION_LABELS = {
     "get_exchange_rate_history": "Exchange Rates (Historical)",
 }
 
+# Tool schemas, in plain {name, description, parameters} form (parameters is a
+# JSON Schema object). Fed to the Gemini SDK below via FunctionDeclaration's
+# parameters_json_schema, which accepts this exact shape directly.
 TOOL_SCHEMAS = [
     {
-        "type": "function",
-        "function": {
-            "name": "get_latest_report_status",
-            "description": "Get whether the most recently uploaded RSE report is fully verified "
-                            "(approved), and what the latest verified report is if not. Use this "
-                            "for any question about report/data verification status.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+        "name": "get_latest_report_status",
+        "description": "Get whether the most recently uploaded RSE report is fully verified "
+                        "(approved), and what the latest verified report is if not. Use this "
+                        "for any question about report/data verification status.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_market_overview",
+        "description": "Get overall market statistics (shares traded, turnover, market cap), "
+                        "indices, and exchange rates for the latest verified report, or a "
+                        "specific one by report_id.",
+        "parameters": {
+            "type": "object",
+            "properties": {"report_id": {"type": "integer", "description": "Optional specific report id."}},
+            "required": [],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_market_overview",
-            "description": "Get overall market statistics (shares traded, turnover, market cap), "
-                            "indices, and exchange rates for the latest verified report, or a "
-                            "specific one by report_id.",
-            "parameters": {
-                "type": "object",
-                "properties": {"report_id": {"type": "integer", "description": "Optional specific report id."}},
-                "required": [],
-            },
+        "name": "get_equity",
+        "description": "Get the latest verified snapshot (price, change, volume, etc.) for one "
+                        "equity by its symbol, e.g. 'BLR' or 'BOK'.",
+        "parameters": {
+            "type": "object",
+            "properties": {"symbol": {"type": "string", "description": "Equity ticker symbol."}},
+            "required": ["symbol"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_equity",
-            "description": "Get the latest verified snapshot (price, change, volume, etc.) for one "
-                            "equity by its symbol, e.g. 'BLR' or 'BOK'.",
-            "parameters": {
-                "type": "object",
-                "properties": {"symbol": {"type": "string", "description": "Equity ticker symbol."}},
-                "required": ["symbol"],
+        "name": "get_equity_history",
+        "description": "Get verified historical closing prices for one equity symbol across "
+                        "past reports, oldest to newest.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"},
+                "limit": {"type": "integer", "description": "Max number of past reports, default 10."},
             },
+            "required": ["symbol"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_equity_history",
-            "description": "Get verified historical closing prices for one equity symbol across "
-                            "past reports, oldest to newest.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbol": {"type": "string"},
-                    "limit": {"type": "integer", "description": "Max number of past reports, default 10."},
-                },
-                "required": ["symbol"],
+        "name": "compare_equities",
+        "description": "Compare the latest verified snapshots of two or more equities side by "
+                        "side, including a backend-computed price/volume difference.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "Two or more ticker symbols."},
             },
+            "required": ["symbols"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "compare_equities",
-            "description": "Compare the latest verified snapshots of two or more equities side by "
-                            "side, including a backend-computed price/volume difference.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbols": {"type": "array", "items": {"type": "string"}, "description": "Two or more ticker symbols."},
-                },
-                "required": ["symbols"],
+        "name": "top_performers",
+        "description": "Rank equities in one verified report by a metric, e.g. to answer "
+                        "'which equity had the highest trading volume'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "metric": {"type": "string", "enum": ["volume", "change_percent", "value_turnover"]},
+                "limit": {"type": "integer", "description": "How many to return, default 5."},
+                "report_id": {"type": "integer"},
             },
+            "required": ["metric"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "top_performers",
-            "description": "Rank equities in one verified report by a metric, e.g. to answer "
-                            "'which equity had the highest trading volume'.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "metric": {"type": "string", "enum": ["volume", "change_percent", "value_turnover"]},
-                    "limit": {"type": "integer", "description": "How many to return, default 5."},
-                    "report_id": {"type": "integer"},
-                },
-                "required": ["metric"],
-            },
+        "name": "get_indices",
+        "description": "Get RSE index values (e.g. RSI, ALSI) and their change for the latest "
+                        "verified report, or a specific one.",
+        "parameters": {
+            "type": "object",
+            "properties": {"report_id": {"type": "integer"}},
+            "required": [],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_indices",
-            "description": "Get RSE index values (e.g. RSI, ALSI) and their change for the latest "
-                            "verified report, or a specific one.",
-            "parameters": {
-                "type": "object",
-                "properties": {"report_id": {"type": "integer"}},
-                "required": [],
+        "name": "get_bonds",
+        "description": "Get government/corporate bond listings for the latest verified report, "
+                        "or a specific one.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "bond_type": {"type": "string", "enum": ["government", "corporate"]},
+                "report_id": {"type": "integer"},
             },
+            "required": [],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_bonds",
-            "description": "Get government/corporate bond listings for the latest verified report, "
-                            "or a specific one.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "bond_type": {"type": "string", "enum": ["government", "corporate"]},
-                    "report_id": {"type": "integer"},
-                },
-                "required": [],
-            },
+        "name": "get_bond_trades",
+        "description": "Get recent bond trade activity (price, volume, value) for the latest "
+                        "verified report, or a specific one.",
+        "parameters": {
+            "type": "object",
+            "properties": {"report_id": {"type": "integer"}, "limit": {"type": "integer"}},
+            "required": [],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_bond_trades",
-            "description": "Get recent bond trade activity (price, volume, value) for the latest "
-                            "verified report, or a specific one.",
-            "parameters": {
-                "type": "object",
-                "properties": {"report_id": {"type": "integer"}, "limit": {"type": "integer"}},
-                "required": [],
-            },
+        "name": "get_exchange_rates",
+        "description": "Get foreign exchange rates (e.g. USD/RWF) for the latest verified "
+                        "report, or a specific one, optionally filtered to one currency.",
+        "parameters": {
+            "type": "object",
+            "properties": {"currency": {"type": "string"}, "report_id": {"type": "integer"}},
+            "required": [],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_exchange_rates",
-            "description": "Get foreign exchange rates (e.g. USD/RWF) for the latest verified "
-                            "report, or a specific one, optionally filtered to one currency.",
-            "parameters": {
-                "type": "object",
-                "properties": {"currency": {"type": "string"}, "report_id": {"type": "integer"}},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_exchange_rate_history",
-            "description": "Get verified historical exchange rates for one currency across past reports.",
-            "parameters": {
-                "type": "object",
-                "properties": {"currency": {"type": "string"}, "limit": {"type": "integer"}},
-                "required": ["currency"],
-            },
+        "name": "get_exchange_rate_history",
+        "description": "Get verified historical exchange rates for one currency across past reports.",
+        "parameters": {
+            "type": "object",
+            "properties": {"currency": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["currency"],
         },
     },
 ]
 
+GEMINI_TOOLS = [
+    genai_types.Tool(function_declarations=[
+        genai_types.FunctionDeclaration(
+            name=schema["name"],
+            description=schema["description"],
+            parameters_json_schema=schema["parameters"],
+        )
+        for schema in TOOL_SCHEMAS
+    ])
+]
+
 
 def _get_client():
-    api_key = current_app.config.get("OPENAI_API_KEY")
+    api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
         return None
-    return OpenAI(api_key=api_key)
+    return genai.Client(api_key=api_key)
 
 
 def _extract_sources(tool_name, result):
@@ -273,58 +256,40 @@ def answer_question(question: str) -> dict:
         return {
             "configured": False,
             "answer": "Ask RSE Market isn't configured yet. An administrator needs to set "
-                      "an OpenAI API key before this assistant can answer questions.",
+                      "a Gemini API key before this assistant can answer questions.",
             "sources": [],
             "used_tools": [],
         }
 
-    model = current_app.config.get("OPENAI_MODEL", "gpt-4o-mini")
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
+    model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
+    config = genai_types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        tools=GEMINI_TOOLS,
+        temperature=0.2,
+    )
+    contents = [genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=question)])]
     sources = []
     used_tools = []
 
     try:
         for _ in range(MAX_TOOL_ROUNDS):
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=TOOL_SCHEMAS,
-                tool_choice="auto",
-                temperature=0.2,
-            )
-            message = response.choices[0].message
-            tool_calls = getattr(message, "tool_calls", None)
+            response = client.models.generate_content(model=model, contents=contents, config=config)
+            function_calls = response.function_calls
 
-            if not tool_calls:
+            if not function_calls:
                 return {
                     "configured": True,
-                    "answer": message.content or "I couldn't generate a response for that question.",
+                    "answer": response.text or "I couldn't generate a response for that question.",
                     "sources": _dedupe_sources(sources),
                     "used_tools": used_tools,
                 }
 
-            messages.append({
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": [
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {"name": call.function.name, "arguments": call.function.arguments},
-                    }
-                    for call in tool_calls
-                ],
-            })
+            contents.append(response.candidates[0].content)
 
-            for call in tool_calls:
-                name = call.function.name
-                try:
-                    args = json.loads(call.function.arguments or "{}")
-                except (ValueError, TypeError):
-                    args = {}
+            response_parts = []
+            for call in function_calls:
+                name = call.name
+                args = call.args or {}
 
                 func = tools.TOOL_FUNCTIONS.get(name)
                 if func is None:
@@ -340,11 +305,12 @@ def answer_question(question: str) -> dict:
                     used_tools.append(name)
                     sources.extend(_extract_sources(name, result))
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": json.dumps(result, default=str),
-                })
+                # Normalize to plain JSON-safe types (e.g. date objects -> strings)
+                # before handing the result back to the model.
+                safe_result = json.loads(json.dumps(result, default=str))
+                response_parts.append(genai_types.Part.from_function_response(name=name, response=safe_result))
+
+            contents.append(genai_types.Content(role="user", parts=response_parts))
 
         return {
             "configured": True,
@@ -352,6 +318,15 @@ def answer_question(question: str) -> dict:
                       "or ask about one thing at a time.",
             "sources": _dedupe_sources(sources),
             "used_tools": used_tools,
+        }
+    except genai_errors.APIError as exc:
+        logger.exception("Ask RSE Market assistant call failed (Gemini API error %s, status=%s)", exc.code, exc.status)
+        return {
+            "configured": True,
+            "answer": "The assistant is temporarily unavailable. Please try again shortly.",
+            "sources": [],
+            "used_tools": [],
+            "error": True,
         }
     except Exception:
         logger.exception("Ask RSE Market assistant call failed")

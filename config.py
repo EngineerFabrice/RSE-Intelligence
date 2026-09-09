@@ -23,8 +23,8 @@ class Config:
     # "Ask RSE Market" assistant (spec: Phase 4). Left unset in a fresh checkout --
     # the assistant reports itself as "not configured" rather than failing, see
     # app/services/ai_assistant.py.
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "") or None
-    OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or None
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 
     WTF_CSRF_ENABLED = True
     SESSION_COOKIE_HTTPONLY = True

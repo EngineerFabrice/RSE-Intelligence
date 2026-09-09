@@ -305,6 +305,42 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 }
 
 /* Ask RSE Market */
+.assistant-launcher {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1030;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 52px;
+  padding: 0 1.35rem;
+  border-radius: 999px;
+  background: var(--rse-navy);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--rse-shadow-lg);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.assistant-launcher-icon { flex: none; }
+.assistant-launcher:hover,
+.assistant-launcher:focus-visible {
+  background: var(--rse-navy-dark);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 24px 56px rgba(17, 32, 51, 0.22);
+}
+.assistant-launcher:active { transform: translateY(0); }
+
+@media (max-width: 575.98px) {
+  .assistant-launcher span { display: none; }
+  .assistant-launcher { padding: 0 0.9rem; }
+}
+
 .assistant-shell { max-width: 820px; }
 .assistant-input-card { border-radius: var(--rse-radius); box-shadow: var(--rse-shadow-sm); }
 .assistant-input-card #assistantInput { flex: 1 1 260px; }
