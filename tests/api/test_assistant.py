@@ -9,6 +9,7 @@ call regardless of what GEMINI_API_KEY happens to be set to in the
 environment.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 from google.genai import errors as genai_errors
@@ -300,14 +301,14 @@ def test_ask_endpoint_rejects_empty_and_oversized_questions(admin_client):
     assert admin_client.post("/api/assistant/ask", json={"question": "x" * 501}).status_code == 400
 
 
-def test_gemini_quota_exhaustion_is_handled_like_any_other_api_failure(app, monkeypatch):
-    # Regression test for the production incident where the configured provider key had
-    # no quota left (originally OpenAI's insufficient_quota/credit_balance_exhausted;
-    # now modeled on Gemini's equivalent 429 RESOURCE_EXHAUSTED). answer_question()
-    # catches genai_errors.APIError (and any other exception) without discriminating
-    # further -- this exercises exactly the handling path a real quota error takes,
-    # and confirms the failure is caught at the Gemini call itself, before any
-    # tool/database access, and never surfaces quota/internal detail to the user.
+def test_gemini_quota_exhaustion_gives_a_specific_useful_message(app, monkeypatch):
+    # Regression test for a real production incident: the free-tier Gemini key's
+    # daily per-model request quota (20/day) was exhausted by normal usage, and
+    # every subsequent request failed with 429 RESOURCE_EXHAUSTED. answer_question()
+    # recognizes this specific, stable status code and returns an actionable
+    # message distinct from the fully generic fallback -- while still never
+    # surfacing quota/billing/internal detail (no raw status code, no "quota"
+    # wording lifted from Gemini's own error text) to the user.
     quota_error = genai_errors.ClientError(
         429,
         {"error": {"message": "You exceeded your current quota, please check your plan and billing details.",
@@ -319,9 +320,119 @@ def test_gemini_quota_exhaustion_is_handled_like_any_other_api_failure(app, monk
     assert result["configured"] is True
     assert result["error"] is True
     assert result["used_tools"] == []  # never reached tool-calling or the database
+    assert "request limit" in result["answer"].lower()
     assert "RESOURCE_EXHAUSTED" not in result["answer"]
     assert "quota" not in result["answer"].lower()
     assert "429" not in result["answer"]
+
+
+def test_gemini_overload_gives_a_specific_useful_message(app, monkeypatch):
+    # Regression test for the other real, repeatedly-observed failure: Gemini
+    # returning 503 UNAVAILABLE ("high demand") with zero retries configured on
+    # the SDK client, so a single transient blip immediately surfaced as a hard
+    # failure. This covers the message; the retry/timeout configuration itself
+    # is covered by test_gemini_client_is_configured_with_retries_and_timeout.
+    overload_error = genai_errors.ServerError(
+        503,
+        {"error": {"message": "The model is overloaded. Please try again later.",
+                    "status": "UNAVAILABLE"}},
+    )
+    _install_fake_gemini(app, monkeypatch, script=[overload_error])
+
+    result = answer_question("What was the latest market activity?")
+    assert result["configured"] is True
+    assert result["error"] is True
+    assert "high demand" in result["answer"].lower()
+    assert "UNAVAILABLE" not in result["answer"]
+    assert "503" not in result["answer"]
+
+
+def test_unknown_api_error_falls_back_to_the_generic_message(app, monkeypatch):
+    other_error = genai_errors.ClientError(400, {"error": {"message": "bad request", "status": "INVALID_ARGUMENT"}})
+    _install_fake_gemini(app, monkeypatch, script=[other_error])
+
+    result = answer_question("What was the latest market activity?")
+    assert result["configured"] is True
+    assert result["error"] is True
+    assert "temporarily unavailable" in result["answer"].lower()
+
+
+def test_gemini_client_is_configured_with_retries_and_timeout(app, monkeypatch):
+    # Locks in the actual fix for the "temporarily unavailable" bug: the SDK
+    # retries zero times and has no request timeout unless http_options is
+    # passed explicitly to genai.Client(...). Without this, any transient
+    # Gemini-side error (503 overload, brief rate-limit bursts) fails on the
+    # very first attempt.
+    captured = {}
+
+    def _fake_client_factory(api_key=None, **kwargs):
+        captured.update(kwargs)
+        return _FakeClient([_fake_response(text="ok")])
+
+    app.config["GEMINI_API_KEY"] = "test-key"
+    monkeypatch.setattr("app.services.ai_assistant.genai.Client", _fake_client_factory)
+
+    answer_question("What was the latest market activity?")
+
+    http_options = captured.get("http_options")
+    assert http_options is not None
+    assert http_options.timeout and http_options.timeout > 0
+    retry_options = http_options.retry_options
+    assert retry_options is not None
+    assert retry_options.attempts and retry_options.attempts > 1
+
+
+def test_concurrent_requests_are_isolated_and_one_failure_does_not_affect_others(app, tmp_path, monkeypatch):
+    # Each answer_question() call builds its own client and its own local
+    # `contents` list -- there is no module-level mutable state that a
+    # concurrent or failed request could corrupt for another request. This
+    # drives many real, DB-backed tool-calling requests through threads at
+    # once (some scripted to fail) and confirms every successful thread gets
+    # exactly its own correct answer/sources, and a failure in one thread
+    # never leaks into or breaks another thread's result.
+    _seed_approved_report(app, tmp_path)
+
+    class _KeyedModels:
+        def generate_content(self, *, model, contents, config):
+            question = contents[0].parts[0].text
+            if question.startswith("FAIL"):
+                raise RuntimeError("simulated transient failure")
+            symbol = question.split()[-1].rstrip("?")
+            if len(contents) == 1:
+                return _fake_response(function_calls=[("get_equity", {"symbol": symbol})])
+            return _fake_response(text=f"The verified closing price for {symbol} was reported.")
+
+    class _KeyedClient:
+        def __init__(self):
+            self.models = _KeyedModels()
+
+    app.config["GEMINI_API_KEY"] = "test-key"
+    monkeypatch.setattr("app.services.ai_assistant.genai.Client", lambda api_key=None, **kw: _KeyedClient())
+
+    questions = [f"What was the price of {sym}?" for sym in (["BLR", "BOK"] * 10)]
+    questions.insert(5, "FAIL now")
+    questions.insert(12, "FAIL now")
+
+    def _ask(question):
+        with app.app_context():
+            return question, answer_question(question)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_ask, questions))
+
+    for question, result in results:
+        if question.startswith("FAIL"):
+            assert result["error"] is True
+            assert result["configured"] is True
+            assert "temporarily unavailable" in result["answer"].lower()
+        else:
+            symbol = question.split()[-1].rstrip("?")
+            assert result.get("error") is None
+            assert result["used_tools"] == ["get_equity"]
+            assert symbol in result["answer"]
+            # No mixing with the other symbol's data.
+            other = "BOK" if symbol == "BLR" else "BLR"
+            assert other not in result["answer"]
 
 
 # ---------------------------------------------------------------------------

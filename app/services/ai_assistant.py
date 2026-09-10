@@ -257,7 +257,25 @@ def _get_client():
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
         return None
-    return genai.Client(api_key=api_key)
+    # The SDK does not retry at all by default (0 retries) and has no request
+    # timeout by default (waits indefinitely). Both left every transient
+    # Gemini-side hiccup (503 overload, brief rate-limit bursts, network
+    # blips) surface immediately as a hard failure with no resilience --
+    # this is the primary cause of "temporarily unavailable" responses.
+    # Bound both explicitly: a handful of quick, backed-off retries for the
+    # HTTP layer's own retriable statuses (408/429/500/502/503/504), and a
+    # ceiling on how long a single request may hang.
+    return genai.Client(
+        api_key=api_key,
+        http_options=genai_types.HttpOptions(
+            timeout=30_000,  # milliseconds
+            retry_options=genai_types.HttpRetryOptions(
+                attempts=3,
+                initial_delay=1.0,
+                max_delay=4.0,
+            ),
+        ),
+    )
 
 
 def _extract_sources(tool_name, result):
@@ -305,7 +323,7 @@ def answer_question(question: str) -> dict:
             "used_tools": [],
         }
 
-    model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = current_app.config.get("GEMINI_MODEL", "gemini-flash-latest")
     config = genai_types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
         tools=GEMINI_TOOLS,
@@ -365,9 +383,21 @@ def answer_question(question: str) -> dict:
         }
     except genai_errors.APIError as exc:
         logger.exception("Ask RSE Market assistant call failed (Gemini API error %s, status=%s)", exc.code, exc.status)
+        # exc.status is a stable machine-readable code (RESOURCE_EXHAUSTED,
+        # UNAVAILABLE, ...) parsed from Gemini's own JSON error body -- safe
+        # to branch on, and lets a known cause get a more useful message
+        # than the generic fallback, without leaking any vendor/billing detail.
+        if exc.status == "RESOURCE_EXHAUSTED":
+            answer = ("Ask RSE Market has reached its current request limit with the AI "
+                      "provider. Please try again in a few minutes.")
+        elif exc.status == "UNAVAILABLE":
+            answer = ("The AI provider is experiencing high demand right now. "
+                      "Please try again in a moment.")
+        else:
+            answer = "The assistant is temporarily unavailable. Please try again shortly."
         return {
             "configured": True,
-            "answer": "The assistant is temporarily unavailable. Please try again shortly.",
+            "answer": answer,
             "sources": [],
             "used_tools": [],
             "error": True,
