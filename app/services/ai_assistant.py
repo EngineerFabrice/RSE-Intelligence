@@ -14,16 +14,27 @@ purely to run that tool-calling loop and turn the results into a plain-English
 explanation — it holds no market data of its own, and every source shown to
 the user is built from the tool results returned during the loop below, not
 from the model's own prose.
+
+Multi-provider failover: Gemini (primary) -> Gemini (optional backup
+project/key) -> OpenAI (final fallback) -> safe generic error. Every provider
+runs the *same* tool-calling loop against the *same* RSE tools below -- only
+which AI is doing the talking changes. Provider selection, bounded
+retry/backoff, and failover live in app/services/ai_provider_manager.py so
+that logic isn't duplicated per provider; this module owns the prompt, the
+tool schemas, the RSE tool-execution loop (once per SDK shape), and turning a
+final failure into a safe, generic, no-internal-detail message.
 """
 
 import json
 import logging
 
+import openai
 from flask import current_app
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
+from app.services import ai_provider_manager as provider_manager
 from app.services import rse_query_tools as tools
 
 logger = logging.getLogger("rse_intelligence.assistant")
@@ -252,19 +263,32 @@ GEMINI_TOOLS = [
     ])
 ]
 
+# Same TOOL_SCHEMAS, reshaped for OpenAI's function-calling format -- the tool
+# definitions themselves are never duplicated, only converted per SDK.
+OPENAI_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": schema["name"],
+            "description": schema["description"],
+            "parameters": schema["parameters"],
+        },
+    }
+    for schema in TOOL_SCHEMAS
+]
 
-def _get_client():
-    api_key = current_app.config.get("GEMINI_API_KEY")
-    if not api_key:
-        return None
+
+def _build_gemini_client(api_key):
     # The SDK does not retry at all by default (0 retries) and has no request
     # timeout by default (waits indefinitely). Both left every transient
     # Gemini-side hiccup (503 overload, brief rate-limit bursts, network
-    # blips) surface immediately as a hard failure with no resilience --
-    # this is the primary cause of "temporarily unavailable" responses.
+    # blips) surface immediately as a hard failure with no resilience.
     # Bound both explicitly: a handful of quick, backed-off retries for the
     # HTTP layer's own retriable statuses (408/429/500/502/503/504), and a
-    # ceiling on how long a single request may hang.
+    # ceiling on how long a single request may hang. This is in addition to,
+    # not instead of, the provider-level retry/failover in
+    # app/services/ai_provider_manager.py, which covers a whole request
+    # (including tool-calling rounds), not just one HTTP call.
     return genai.Client(
         api_key=api_key,
         http_options=genai_types.HttpOptions(
@@ -276,6 +300,13 @@ def _get_client():
             ),
         ),
     )
+
+
+def _build_openai_client(api_key):
+    # max_retries=0: retry/backoff for a whole request is owned exclusively by
+    # app/services/ai_provider_manager.py so every provider gets the same,
+    # bounded retry behaviour instead of each SDK layering its own on top.
+    return openai.OpenAI(api_key=api_key, timeout=30.0, max_retries=0)
 
 
 def _extract_sources(tool_name, result):
@@ -310,20 +341,30 @@ def _dedupe_sources(sources):
     return deduped
 
 
-def answer_question(question: str) -> dict:
-    """Returns {"configured": bool, "answer": str, "sources": [...], "used_tools": [...]}.
-    Never raises -- any failure is turned into a safe, generic message."""
-    client = _get_client()
-    if client is None:
-        return {
-            "configured": False,
-            "answer": "Ask RSE Market isn't configured yet. An administrator needs to set "
-                      "a Gemini API key before this assistant can answer questions.",
-            "sources": [],
-            "used_tools": [],
-        }
+def _execute_tool_call(name, args):
+    """Runs one tool call against the existing, unchanged RSE tool layer
+    (app/services/rse_query_tools.py). Shared verbatim by every AI provider's
+    conversation loop below so the RSE business logic and database access
+    path are never duplicated per provider."""
+    func = tools.TOOL_FUNCTIONS.get(name)
+    if func is None:
+        return {"found": False, "message": "That capability is not available."}
+    try:
+        return func(**args)
+    except TypeError:
+        # The model passed arguments the tool doesn't accept -- fail closed
+        # with an explicit "not found" rather than letting an exception about
+        # internal argument shapes reach the user.
+        return {"found": False, "message": "That question could not be understood well enough to look up."}
 
-    model = current_app.config.get("GEMINI_MODEL", "gemini-flash-latest")
+
+def _run_gemini_conversation(client, model, question):
+    """Runs the tool-calling loop for one Gemini provider (primary or
+    backup) to completion. Returns the {"answer", "sources", "used_tools"}
+    result dict for a normal answer -- including a valid "not found"/"data
+    unavailable" tool result, which is a successful answer, not a failure.
+    Raises on any AI/provider failure; the caller translates that into a
+    ProviderFailure for app/services/ai_provider_manager.py to handle."""
     config = genai_types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
         tools=GEMINI_TOOLS,
@@ -333,80 +374,241 @@ def answer_question(question: str) -> dict:
     sources = []
     used_tools = []
 
-    try:
-        for _ in range(MAX_TOOL_ROUNDS):
-            response = client.models.generate_content(model=model, contents=contents, config=config)
-            function_calls = response.function_calls
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = client.models.generate_content(model=model, contents=contents, config=config)
+        function_calls = response.function_calls
 
-            if not function_calls:
-                return {
-                    "configured": True,
-                    "answer": response.text or "I couldn't generate a response for that question.",
-                    "sources": _dedupe_sources(sources),
-                    "used_tools": used_tools,
+        if not function_calls:
+            return {
+                "answer": response.text or "I couldn't generate a response for that question.",
+                "sources": _dedupe_sources(sources),
+                "used_tools": used_tools,
+            }
+
+        contents.append(response.candidates[0].content)
+
+        response_parts = []
+        for call in function_calls:
+            name, args = call.name, call.args or {}
+            result = _execute_tool_call(name, args)
+            used_tools.append(name)
+            sources.extend(_extract_sources(name, result))
+
+            # Normalize to plain JSON-safe types (e.g. date objects -> strings)
+            # before handing the result back to the model.
+            safe_result = json.loads(json.dumps(result, default=str))
+            response_parts.append(genai_types.Part.from_function_response(name=name, response=safe_result))
+
+        contents.append(genai_types.Content(role="user", parts=response_parts))
+
+    return {
+        "answer": "I wasn't able to finish answering that question. Please try rephrasing it, "
+                  "or ask about one thing at a time.",
+        "sources": _dedupe_sources(sources),
+        "used_tools": used_tools,
+    }
+
+
+def _run_openai_conversation(client, model, question):
+    """Same tool-calling loop as _run_gemini_conversation, reshaped for
+    OpenAI's chat-completions message/tool-call format. Calls the exact same
+    _execute_tool_call / _extract_sources helpers -- the RSE tools and the
+    database they read from are identical to the Gemini path."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": question},
+    ]
+    sources = []
+    used_tools = []
+
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = client.chat.completions.create(
+            model=model, messages=messages, tools=OPENAI_TOOLS, temperature=0.2,
+        )
+        message = response.choices[0].message
+        tool_calls = message.tool_calls
+
+        if not tool_calls:
+            return {
+                "answer": message.content or "I couldn't generate a response for that question.",
+                "sources": _dedupe_sources(sources),
+                "used_tools": used_tools,
+            }
+
+        messages.append({
+            "role": "assistant",
+            "content": message.content,
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.function.name, "arguments": call.function.arguments},
                 }
+                for call in tool_calls
+            ],
+        })
 
-            contents.append(response.candidates[0].content)
+        for call in tool_calls:
+            name = call.function.name
+            try:
+                args = json.loads(call.function.arguments or "{}")
+            except ValueError:
+                args = {}
+            result = _execute_tool_call(name, args)
+            used_tools.append(name)
+            sources.extend(_extract_sources(name, result))
 
-            response_parts = []
-            for call in function_calls:
-                name = call.name
-                args = call.args or {}
+            safe_result = json.loads(json.dumps(result, default=str))
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": json.dumps(safe_result),
+            })
 
-                func = tools.TOOL_FUNCTIONS.get(name)
-                if func is None:
-                    result = {"found": False, "message": "That capability is not available."}
-                else:
-                    try:
-                        result = func(**args)
-                    except TypeError:
-                        # The model passed arguments the tool doesn't accept -- fail closed
-                        # with an explicit "not found" rather than letting an exception
-                        # about internal argument shapes reach the user.
-                        result = {"found": False, "message": "That question could not be understood well enough to look up."}
-                    used_tools.append(name)
-                    sources.extend(_extract_sources(name, result))
+    return {
+        "answer": "I wasn't able to finish answering that question. Please try rephrasing it, "
+                  "or ask about one thing at a time.",
+        "sources": _dedupe_sources(sources),
+        "used_tools": used_tools,
+    }
 
-                # Normalize to plain JSON-safe types (e.g. date objects -> strings)
-                # before handing the result back to the model.
-                safe_result = json.loads(json.dumps(result, default=str))
-                response_parts.append(genai_types.Part.from_function_response(name=name, response=safe_result))
 
-            contents.append(genai_types.Content(role="user", parts=response_parts))
+_RETRYABLE_GEMINI_HTTP_CODES = {408, 429, 500, 502, 503, 504}
+_RETRYABLE_GEMINI_STATUSES = {"UNAVAILABLE", "RESOURCE_EXHAUSTED"}
 
+
+def _classify_gemini_error(exc):
+    """Returns (retryable, reason). `reason` is a stable machine-readable code
+    (RESOURCE_EXHAUSTED, UNAVAILABLE, ...) parsed from Gemini's own JSON error
+    body -- safe to branch on for a more specific user-facing message, never
+    leaking vendor/billing detail itself."""
+    if isinstance(exc, genai_errors.APIError):
+        retryable = exc.code in _RETRYABLE_GEMINI_HTTP_CODES or exc.status in _RETRYABLE_GEMINI_STATUSES
+        return retryable, exc.status
+    # Anything else reaching here (timeouts, connection resets, DNS blips) is
+    # a transient network condition worth a bounded retry.
+    return True, None
+
+
+def _make_gemini_provider(name, api_key, model, question):
+    if not api_key:
+        return provider_manager.Provider(name=name, configured=False, call=None)
+
+    # Built once per provider and reused across retry attempts -- a client is
+    # a reusable connection/config object, not a per-request one, so a
+    # transient failure retries the same client rather than paying to
+    # reconnect from scratch each time.
+    client = _build_gemini_client(api_key)
+
+    def _call():
+        try:
+            return _run_gemini_conversation(client, model, question)
+        except Exception as exc:
+            retryable, reason = _classify_gemini_error(exc)
+            logger.warning("Ask RSE Market: %s call failed (retryable=%s): %s", name, retryable, exc)
+            raise provider_manager.ProviderFailure(str(exc), retryable=retryable, reason=reason) from exc
+
+    return provider_manager.Provider(name=name, configured=True, call=_call)
+
+
+def _classify_openai_error(exc):
+    """Returns (retryable, reason), mirroring _classify_gemini_error."""
+    if isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError)):
+        return True, None
+    if isinstance(exc, openai.APIStatusError):
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 429:
+            return True, "RESOURCE_EXHAUSTED"
+        if status_code in (502, 503, 504):
+            return True, "UNAVAILABLE"
+        # 4xx other than 429 (bad request, auth, permission, not found) is a
+        # permanent misconfiguration -- retrying it would never succeed.
+        return False, None
+    return True, None
+
+
+def _make_openai_provider(api_key, model, question):
+    if not api_key:
+        return provider_manager.Provider(name="openai", configured=False, call=None)
+
+    client = _build_openai_client(api_key)
+
+    def _call():
+        try:
+            return _run_openai_conversation(client, model, question)
+        except Exception as exc:
+            retryable, reason = _classify_openai_error(exc)
+            logger.warning("Ask RSE Market: openai call failed (retryable=%s): %s", retryable, exc)
+            raise provider_manager.ProviderFailure(str(exc), retryable=retryable, reason=reason) from exc
+
+    return provider_manager.Provider(name="openai", configured=True, call=_call)
+
+
+def _generic_error_message(reason):
+    if reason == "RESOURCE_EXHAUSTED":
+        return ("Ask RSE Market has reached its current request limit with the AI "
+                "provider. Please try again in a few minutes.")
+    if reason == "UNAVAILABLE":
+        return "The AI provider is experiencing high demand right now. Please try again in a moment."
+    return "The assistant is temporarily unavailable. Please try again shortly."
+
+
+def answer_question(question: str) -> dict:
+    """Returns {"configured": bool, "answer": str, "sources": [...], "used_tools": [...]}.
+    Never raises -- any failure is turned into a safe, generic message.
+
+    Tries Gemini (primary), then an optional second Gemini configuration
+    (backup project/key), then OpenAI, in that order -- see
+    app/services/ai_provider_manager.py for the retry/failover mechanics.
+    Provider switching is invisible to the caller: no error text, provider
+    name, or internal detail from a failed provider ever reaches the
+    response. Every provider answers using the exact same RSE tool-calling
+    loop against app/services/rse_query_tools.py; only the model making the
+    call changes, and a valid RSE result (including "data unavailable")
+    never triggers failover to another provider.
+    """
+    cfg = current_app.config
+
+    try:
+        providers = [
+            _make_gemini_provider(
+                "gemini-primary", cfg.get("GEMINI_API_KEY"),
+                cfg.get("GEMINI_MODEL", "gemini-flash-latest"), question,
+            ),
+            _make_gemini_provider(
+                "gemini-backup", cfg.get("GEMINI_API_KEY_BACKUP"),
+                cfg.get("GEMINI_MODEL_BACKUP") or cfg.get("GEMINI_MODEL", "gemini-flash-latest"), question,
+            ),
+            _make_openai_provider(
+                cfg.get("OPENAI_API_KEY"), cfg.get("OPENAI_MODEL", "gpt-4o-mini"), question,
+            ),
+        ]
+        result = provider_manager.answer_with_failover(providers)
+        return {"configured": True, **result}
+    except provider_manager.NoProviderConfigured:
         return {
-            "configured": True,
-            "answer": "I wasn't able to finish answering that question. Please try rephrasing it, "
-                      "or ask about one thing at a time.",
-            "sources": _dedupe_sources(sources),
-            "used_tools": used_tools,
+            "configured": False,
+            "answer": "Ask RSE Market isn't configured yet. An administrator needs to set "
+                      "an AI provider API key before this assistant can answer questions.",
+            "sources": [],
+            "used_tools": [],
         }
-    except genai_errors.APIError as exc:
-        logger.exception("Ask RSE Market assistant call failed (Gemini API error %s, status=%s)", exc.code, exc.status)
-        # exc.status is a stable machine-readable code (RESOURCE_EXHAUSTED,
-        # UNAVAILABLE, ...) parsed from Gemini's own JSON error body -- safe
-        # to branch on, and lets a known cause get a more useful message
-        # than the generic fallback, without leaking any vendor/billing detail.
-        if exc.status == "RESOURCE_EXHAUSTED":
-            answer = ("Ask RSE Market has reached its current request limit with the AI "
-                      "provider. Please try again in a few minutes.")
-        elif exc.status == "UNAVAILABLE":
-            answer = ("The AI provider is experiencing high demand right now. "
-                      "Please try again in a moment.")
-        else:
-            answer = "The assistant is temporarily unavailable. Please try again shortly."
+    except provider_manager.AllProvidersFailed as exc:
+        reason = getattr(exc.last_failure, "reason", None)
+        logger.error("Ask RSE Market: all configured providers failed (last reason=%s)", reason)
         return {
             "configured": True,
-            "answer": answer,
+            "answer": _generic_error_message(reason),
             "sources": [],
             "used_tools": [],
             "error": True,
         }
     except Exception:
-        logger.exception("Ask RSE Market assistant call failed")
+        # Last-resort safety net -- answer_question() must never raise.
+        logger.exception("Ask RSE Market assistant call failed unexpectedly")
         return {
             "configured": True,
-            "answer": "The assistant is temporarily unavailable. Please try again shortly.",
+            "answer": _generic_error_message(None),
             "sources": [],
             "used_tools": [],
             "error": True,

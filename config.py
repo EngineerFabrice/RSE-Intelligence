@@ -22,9 +22,22 @@ class Config:
 
     # "Ask RSE Market" assistant (spec: Phase 4). Left unset in a fresh checkout --
     # the assistant reports itself as "not configured" rather than failing, see
-    # app/services/ai_assistant.py.
+    # app/services/ai_assistant.py. Provider priority/failover mechanics live in
+    # app/services/ai_provider_manager.py: Gemini (primary) -> Gemini (backup,
+    # optional) -> OpenAI (final fallback) -> safe generic error.
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or None
     GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+
+    # Optional second Gemini configuration used only if the primary fails. This
+    # must be a separately configured Gemini project/key, not just a second key
+    # in the same project -- two keys in one project share the same quota and
+    # would fail together. Leave blank to skip the backup tier entirely.
+    GEMINI_API_KEY_BACKUP = os.environ.get("GEMINI_API_KEY_BACKUP", "") or None
+    GEMINI_MODEL_BACKUP = os.environ.get("GEMINI_MODEL_BACKUP", "") or GEMINI_MODEL
+
+    # Final fallback provider if both Gemini tiers fail. Leave blank to skip it.
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "") or None
+    OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
     WTF_CSRF_ENABLED = True
     SESSION_COOKIE_HTTPONLY = True
