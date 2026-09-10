@@ -1,6 +1,18 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script>
+    // Applied synchronously, before CSS paints, to avoid a light-mode flash
+    // when the user has previously chosen dark mode.
+    (function () {
+      try {
+        var saved = localStorage.getItem("rse-theme");
+        if (saved === "dark" || saved === "light") {
+          document.documentElement.setAttribute("data-bs-theme", saved);
+        }
+      } catch (e) { /* localStorage unavailable (private mode, etc.) */ }
+    })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}RSE Intelligence{% endblock %}</title>
@@ -25,6 +37,7 @@
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'dashboard.index' }}" href="{{ url_for('dashboard.index') }}">Home</a></li>
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint in ('reports.browse_reports', 'reports.preview_page') }}" href="{{ url_for('reports.browse_reports') }}">Reports</a></li>
         <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint in ('reports.list_reports', 'reports.edit_page') }}" href="{{ url_for('reports.list_reports') }}">Database</a></li>
+        <li class="nav-item"><a class="nav-link {{ 'active' if request.endpoint == 'market.analytics' }}" href="{{ url_for('market.analytics') }}">Market Analytics</a></li>
         {% if current_user.is_admin() %}
         <li class="nav-item"><a class="nav-link {{ 'active' if request.blueprint == 'admin' }}" href="{{ url_for('admin.users') }}">Administration</a></li>
         {% endif %}
@@ -33,6 +46,17 @@
         {% if current_user.can_edit() %}
         <li class="nav-item me-2"><a href="{{ url_for('reports.upload_page') }}" class="btn btn-primary btn-sm mt-1 mt-lg-0">+ Upload Report</a></li>
         {% endif %}
+        <li class="nav-item me-2 d-flex align-items-center">
+          <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+            <svg class="theme-toggle-icon icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+            </svg>
+            <svg class="theme-toggle-icon icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>
+            </svg>
+          </button>
+        </li>
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
             <span class="user-avatar">{{ current_user.name[0]|upper if current_user.name else "?" }}</span>
@@ -78,6 +102,7 @@
 
 <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

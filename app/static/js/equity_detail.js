@@ -35,11 +35,25 @@
     }
   }
 
+  let lastDays = 30;
+
+  function chartTheme() {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      line: css.getPropertyValue("--rse-chart-line").trim(),
+      fill: css.getPropertyValue("--rse-chart-fill").trim(),
+      grid: css.getPropertyValue("--rse-chart-grid").trim(),
+      text: css.getPropertyValue("--rse-chart-text").trim(),
+    };
+  }
+
   function renderChart(days) {
+    lastDays = days;
     let data = fullHistory;
     if (days !== "all") {
       data = fullHistory.slice(-days);
     }
+    const theme = chartTheme();
     const ctx = document.getElementById("priceChart").getContext("2d");
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
@@ -49,14 +63,23 @@
         datasets: [{
           label: "Closing Price",
           data: data.map(h => h.closing_price),
-          borderColor: "#1f4e78",
-          backgroundColor: "rgba(31,78,120,0.08)",
+          borderColor: theme.line,
+          backgroundColor: theme.fill,
           tension: 0.25, fill: true, pointRadius: 2,
         }],
       },
-      options: { responsive: true, plugins: { legend: { display: false } } },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: theme.text }, grid: { color: theme.grid } },
+          y: { ticks: { color: theme.text }, grid: { color: theme.grid } },
+        },
+      },
     });
   }
+
+  document.addEventListener("rse:theme-changed", () => { if (chart) renderChart(lastDays); });
 
   function renderHistoryTable() {
     const body = document.getElementById("historyBody");

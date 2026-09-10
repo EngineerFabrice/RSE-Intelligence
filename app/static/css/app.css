@@ -13,11 +13,52 @@
   --rse-surface-soft: #f4f7fa;
   --rse-border-soft: #e7ecf1;
   --rse-text-tertiary: #8894a1;
+  --rse-hover-bg: #eef3f8;
   --rse-shadow-sm: 0 1px 2px rgba(17, 32, 51, 0.05);
   --rse-shadow-md: 0 10px 28px rgba(17, 32, 51, 0.07);
   --rse-shadow-lg: 0 20px 48px rgba(17, 32, 51, 0.12);
   --rse-radius: 12px;
   --rse-radius-sm: 8px;
+
+  /* Chart colors (Chart.js renders to canvas, so it reads these via JS rather
+     than CSS -- kept as their own tokens, separate from --rse-navy, so a
+     theme change can retune chart contrast independently of UI chrome). */
+  --rse-chart-line: #1f4e78;
+  --rse-chart-fill: rgba(31, 78, 120, 0.08);
+  --rse-chart-grid: #e7ecf1;
+  --rse-chart-text: #6b7787;
+}
+
+/* Dark mode: same institutional palette, inverted for a dark surface. Applies
+   platform-wide via the data-bs-theme attribute Bootstrap 5.3 itself reads,
+   so Bootstrap's own components (tables, forms, modals, dropdowns) pick up
+   dark styling automatically alongside these custom tokens. */
+[data-bs-theme="dark"] {
+  --rse-navy: #4f8fc4;
+  --rse-navy-dark: #2c5c86;
+  --rse-ink: #e7ecf2;
+  --rse-muted: #9aa7b6;
+  --rse-border: #2c3644;
+  --rse-bg: #10151c;
+  --rse-high: #3cb37a;
+  --rse-review: #d99a3f;
+  --rse-manual: #dd6a65;
+
+  --rse-surface: #1a212b;
+  --rse-surface-soft: #212a35;
+  --rse-border-soft: #2c3644;
+  --rse-text-tertiary: #7c8894;
+  --rse-hover-bg: #232d39;
+  --rse-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --rse-shadow-md: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --rse-shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+  --rse-chart-line: #5e9ed6;
+  --rse-chart-fill: rgba(94, 158, 214, 0.14);
+  --rse-chart-grid: #2c3644;
+  --rse-chart-text: #9aa7b6;
+
+  color-scheme: dark;
 }
 
 body {
@@ -40,10 +81,10 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 .rse-navbar .nav-link.active { color: #fff; border-bottom-color: #a8c65a; }
 .user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; background: rgba(255,255,255,0.14); color: #fff; font-weight: 700; font-size: 0.85rem; }
 
-.card { border: 1px solid var(--rse-border); border-radius: var(--rse-radius-sm); box-shadow: var(--rse-shadow-sm); }
-.card-header { background: #fff; border-bottom: 1px solid var(--rse-border); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--rse-muted); }
+.card { border: 1px solid var(--rse-border); border-radius: var(--rse-radius-sm); box-shadow: var(--rse-shadow-sm); background: var(--rse-surface); color: var(--rse-ink); }
+.card-header { background: var(--rse-surface); border-bottom: 1px solid var(--rse-border); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--rse-muted); }
 
-.metric-card { border: 1px solid var(--rse-border); border-radius: 6px; background: #fff; padding: 1rem 1.1rem; }
+.metric-card { border: 1px solid var(--rse-border); border-radius: 6px; background: var(--rse-surface); padding: 1rem 1.1rem; }
 .metric-card .metric-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--rse-muted); }
 .metric-card .metric-value { font-size: 1.5rem; font-weight: 700; color: var(--rse-ink); }
 .metric-card .metric-sub { font-size: 0.78rem; color: var(--rse-muted); }
@@ -51,7 +92,7 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 .table { font-size: 0.85rem; }
 .table thead th { background: var(--rse-navy); color: #fff; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; border: none; }
 .table td, .table th { vertical-align: middle; }
-.table-hover tbody tr:hover { background: #eef3f8; }
+.table-hover tbody tr:hover { background: var(--rse-hover-bg); }
 
 .badge-confidence-high { background: var(--rse-high); }
 .badge-confidence-review_required { background: var(--rse-review); }
@@ -237,7 +278,7 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
   margin-right: 0.55rem; vertical-align: -4px;
 }
 
-.narrative-box { background: #fff; border: 1px solid var(--rse-border); border-left: 4px solid var(--rse-navy); border-radius: 4px; padding: 1rem 1.25rem; font-size: 0.92rem; }
+.narrative-box { background: var(--rse-surface); border: 1px solid var(--rse-border); border-left: 4px solid var(--rse-navy); border-radius: 4px; padding: 1rem 1.25rem; font-size: 0.92rem; }
 
 /* Home dashboard: secondary, at-a-glance context below the upload workflow. */
 .home-dashboard { max-width: 960px; margin: 2.5rem auto 0; padding-bottom: 3rem; }
@@ -355,7 +396,7 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.assistant-example-chip:hover { background: #eef3f8; border-color: var(--rse-navy); }
+.assistant-example-chip:hover { background: var(--rse-hover-bg); border-color: var(--rse-navy); }
 
 .assistant-entry { margin-bottom: 1.25rem; }
 .assistant-question { font-weight: 700; color: var(--rse-ink); margin-bottom: 0.5rem; }
@@ -417,7 +458,7 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 .report-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; margin-bottom: 1.25rem; }
 .report-title { color: var(--rse-ink); font-size: clamp(1.5rem, 3vw, 2.15rem); margin: 0.35rem 0 0.5rem; }
 .report-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.45rem; }
-.report-meta { background: #fff; }
+.report-meta { background: var(--rse-surface); }
 .section-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin: 1.5rem 0 0.75rem; }
 .section-heading h2 { font-size: 1.35rem; margin: 0.25rem 0 0; }
 .report-tabs { border-bottom-color: var(--rse-border); gap: 0.25rem; }
@@ -446,6 +487,28 @@ h1, h2, h3, .navbar-brand { font-family: Georgia, "Times New Roman", serif; }
 .btn-outline-primary:hover, .btn-outline-primary:focus { background: var(--rse-surface-soft); color: var(--rse-navy-dark); border-color: var(--rse-navy); }
 .btn-outline-secondary:hover, .btn-outline-secondary:focus { box-shadow: var(--rse-shadow-sm); }
 .btn:focus-visible, .nav-link:focus-visible { outline: 3px solid rgba(168, 198, 90, 0.75); outline-offset: 2px; }
+
+[data-bs-theme="dark"] .alert-success { color: #b9e7cb; background: #16342a; border-color: #245d43; }
+
+/* Light/Dark toggle (navbar) */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.theme-toggle:hover { background: rgba(255, 255, 255, 0.18); }
+.theme-toggle:active { transform: translateY(1px); }
+.theme-toggle .theme-toggle-icon.icon-moon { display: none; }
+[data-bs-theme="dark"] .theme-toggle .theme-toggle-icon.icon-sun { display: none; }
+[data-bs-theme="dark"] .theme-toggle .theme-toggle-icon.icon-moon { display: block; }
 
 @media (max-width: 767.98px) {
   .home-workflow { padding-top: 1.25rem; }
